@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base theme: Support both light and dark modes */
+@layer base {
+  html { 
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; 
+  }
+  
+  /* Light mode - default */
+  body {
+    @apply min-h-screen bg-white text-gray-900;
+  }
+  
+  /* Dark mode */
+  .dark body {
+    @apply bg-gray-900 text-white;
+  }
+}
+
+/* Reusable UI primitives */
+@layer components {
+  .card {
+    @apply rounded-xl border shadow-sm;
+  }
+  
+  /* Light mode card */
+  .card {
+    @apply border-gray-200 bg-white;
+  }
+  
+  /* Dark mode card */
+  .dark .card {
+    @apply border-gray-800 bg-gray-800;
+  }
+  
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+  
+  .btn-primary {
+    @apply bg-blue-600 text-white hover:bg-blue-700;
+  }
+  
+  .btn-outline {
+    @apply border text-gray-900 hover:bg-gray-50;
+    @apply dark:text-white dark:hover:bg-gray-800;
+  }
+  
+  /* Light mode outline */
+  .btn-outline {
+    @apply border-gray-300 bg-transparent;
+  }
+  
+  /* Dark mode outline */
+  .dark .btn-outline {
+    @apply border-gray-700 bg-transparent;
+  }
+  
+  .btn-ghost {
+    @apply text-gray-900 hover:bg-gray-100;
+    @apply dark:text-white dark:hover:bg-gray-800;
+  }
+  
+  .input {
+    @apply w-full rounded-lg border px-3 py-2 focus:outline-none transition-colors;
+  }
+  
+  /* Light mode input */
+  .input {
+    @apply border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20;
+  }
+  
+  /* Dark mode input */
+  .dark .input {
+    @apply border-gray-700 bg-gray-800 text-white placeholder:text-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

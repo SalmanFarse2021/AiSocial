@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Call Sounds</title>
+</head>
+<body>
+    <h1>Generate Call Sounds</h1>
+    <button onclick="generateRingtone()">Generate Incoming Ringtone</button>
+    <button onclick="generateCallingTone()">Generate Outgoing Calling Tone</button>
+    <div id="output"></div>
+
+    <script>
+        // Generate incoming call ringtone
+        function generateRingtone() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const duration = 2;
+            const sampleRate = audioContext.sampleRate;
+            const buffer = audioContext.createBuffer(1, duration * sampleRate, sampleRate);
+            const channel = buffer.getChannelData(0);
+            
+            // Higher pitched, urgent sound
+            for (let i = 0; i < buffer.length; i++) {
+                const t = i / sampleRate;
+                const pulse = Math.floor(t * 4) % 2;
+                if (pulse === 0) {
+                    channel[i] = Math.sin(2 * Math.PI * 800 * t) * 0.3 * Math.exp(-t * 2);
+                }
+            }
+            
+            playAndDownload(buffer, audioContext, 'ringtone.wav');
+        }
+
+        // Generate outgoing calling tone
+        function generateCallingTone() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const duration = 3;
+            const sampleRate = audioContext.sampleRate;
+            const buffer = audioContext.createBuffer(1, duration * sampleRate, sampleRate);
+            const channel = buffer.getChannelData(0);
+            
+            // Lower, steady sound
+            for (let i = 0; i < buffer.length; i++) {
+                const t = i / sampleRate;
+                const on = (t % 3) < 1.5;
+                if (on) {
+                    channel[i] = Math.sin(2 * Math.PI * 440 * t) * 0.2;
+                }
+            }
+            
+            playAndDownload(buffer, audioContext, 'calling.wav');
+        }
+
+        function playAndDownload(buffer, audioContext, filename) {
+            // Play the sound
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.start();
+
+            // Convert to WAV
+            const wav = bufferToWave(buffer, buffer.length);
+            const blob = new Blob([wav], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+
+            // Create download link
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.textContent = `Download ${filename}`;
+            document.getElementById('output').appendChild(link);
+            document.getElementById('output').appendChild(document.createElement('br'));
+        }
+
+        function bufferToWave(abuffer, len) {
+            const numOfChan = abuffer.numberOfChannels;
+            const length = len * numOfChan * 2 + 44;
+            const buffer = new ArrayBuffer(length);
+            const view = new DataView(buffer);
+            const channels = [];
+            let sample;
+            let offset = 0;
+            let pos = 0;
+
+            // Write WAV header
+            setUint32(0x46464952); // "RIFF"
+            setUint32(length - 8); // file length - 8
+            setUint32(0x45564157); // "WAVE"
+            setUint32(0x20746d66); // "fmt " chunk
+            setUint32(16); // length = 16
+            setUint16(1); // PCM (uncompressed)
+            setUint16(numOfChan);
+            setUint32(abuffer.sampleRate);
+            setUint32(abuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
+            setUint16(numOfChan * 2); // block-align
+            setUint16(16); // 16-bit
+            setUint32(0x61746164); // "data" - chunk
+            setUint32(length - pos - 4); // chunk length
+
+            // Write interleaved data
+            for (let i = 0; i < abuffer.numberOfChannels; i++)
+                channels.push(abuffer.getChannelData(i));
+
+            while (pos < length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    view.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+
+            return buffer;
+
+            function setUint16(data) {
+                view.setUint16(pos, data, true);
+                pos += 2;
+            }
+
+            function setUint32(data) {
+                view.setUint32(pos, data, true);
+                pos += 4;
+            }
+        }
+    </script>
+</body>
+</html>
