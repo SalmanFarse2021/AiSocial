@@ -5,10 +5,207 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { apiGet, apiPost } from '@/lib/api';
 import { apiDelete } from '@/lib/api';
-import { uploadImageToCloudinary } from '@/lib/upload';
+import { uploadImageToCloudinary, uploadVideoToCloudinary } from '@/lib/upload';
 import { API_BASE, authHeaders } from '@/lib/api';
 import Navbar, { Icon } from '@/components/Navbar';
 import ShareModal from '@/components/ShareModal';
+import ThemeToggle from '@/components/ThemeToggle';
+import { getEmbedConfig, isVideoMedia, VIDEO_FILE_EXTENSIONS } from '@/lib/media';
+
+const GEMINI_FALLBACK_API_KEY = 'AIzaSyCEFYG3fKn-j9tSTV3ENXEGf75rdGKN8NA';
+const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || GEMINI_FALLBACK_API_KEY;
+const GEMINI_MODEL_CANDIDATES = Array.from(
+  new Set(
+    [
+      process.env.NEXT_PUBLIC_GEMINI_MODEL,
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-latest',
+      'gemini-2.0-flash-exp',
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-latest',
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-flash-8b',
+      'gemini-pro-vision',
+      'gemini-1.0-pro-vision',
+      'gemini-1.0-pro-vision-latest',
+    ].filter(Boolean)
+  )
+);
+
+async function callGeminiModel(parts) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('Gemini API key is missing');
+  }
+  const filteredParts = parts.filter(Boolean);
+  if (!filteredParts.length) {
+    throw new Error('Gemini prompt is empty');
+  }
+
+  const tried = new Set();
+  const errors = [];
+  const queue = [...GEMINI_MODEL_CANDIDATES];
+  let fetchedList = false;
+
+  const sendRequest = async (model) => {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const response = await fetch(`${endpoint}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: filteredParts,
+          },
+        ],
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error?.message || 'Gemini request failed');
+    }
+
+    const text = data.candidates
+      ?.map((candidate) => candidate.content?.parts?.map((part) => part.text || '').join('') || '')
+      .join('\n')
+      .trim();
+
+    if (!text) {
+      throw new Error('Gemini returned an empty response');
+    }
+
+    return text;
+  };
+
+  const enqueueFromList = async () => {
+    if (fetchedList) return;
+    fetchedList = true;
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Failed to fetch Gemini models');
+      }
+      const available = data.models?.map((m) => m.name?.replace('models/', '')).filter(Boolean) || [];
+      const prioritized = [
+        ...available.filter((name) => name.includes('2.5') && name.includes('flash')),
+        ...available.filter((name) => name.includes('2.0') && name.includes('flash')),
+        ...available.filter((name) => name.includes('flash') && !name.includes('2.')),
+        ...available.filter((name) => name.includes('vision')),
+      ];
+      prioritized.forEach((name) => {
+        if (!tried.has(name) && !queue.includes(name)) {
+          queue.push(name);
+        }
+      });
+    } catch (err) {
+      console.warn('Gemini model list fetch failed:', err);
+    }
+  };
+
+  while (queue.length) {
+    const model = queue.shift();
+    if (!model || tried.has(model)) continue;
+    tried.add(model);
+    try {
+      return await sendRequest(model);
+    } catch (err) {
+      errors.push(`${model}: ${err.message}`);
+    }
+  }
+
+  await enqueueFromList();
+
+  while (queue.length) {
+    const model = queue.shift();
+    if (!model || tried.has(model)) continue;
+    tried.add(model);
+    try {
+      return await sendRequest(model);
+    } catch (err) {
+      errors.push(`${model}: ${err.message}`);
+    }
+  }
+
+  throw new Error(`All Gemini model attempts failed -> ${errors.join(' | ')}`);
+}
+
+function cleanGeminiJsonPayload(text) {
+  if (!text) return text;
+  return text
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/, '')
+    .trim();
+}
+
+function tryParseGeminiJson(text) {
+  if (!text) return null;
+  const cleaned = cleanGeminiJsonPayload(text);
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    const arrayStart = cleaned.indexOf('[');
+    const arrayEnd = cleaned.lastIndexOf(']');
+    if (arrayStart !== -1 && arrayEnd !== -1) {
+      try {
+        return JSON.parse(cleaned.slice(arrayStart, arrayEnd + 1));
+      } catch (subErr) {
+        console.warn('Gemini JSON array parse retry failed:', subErr);
+      }
+    }
+    const objStart = cleaned.indexOf('{');
+    const objEnd = cleaned.lastIndexOf('}');
+    if (objStart !== -1 && objEnd !== -1) {
+      try {
+        return JSON.parse(cleaned.slice(objStart, objEnd + 1));
+      } catch (subErr) {
+        console.warn('Gemini JSON object parse retry failed:', subErr);
+      }
+    }
+    throw err;
+  }
+}
+
+function normalizeHashtagList(list) {
+  const normalized = [];
+  const seen = new Set();
+  (list || []).forEach((rawTag) => {
+    if (!rawTag) return;
+    const trimmed = rawTag.toString().trim();
+    if (!trimmed) return;
+    const collapsed = trimmed.replace(/\s+/g, '');
+    const withHash = collapsed.startsWith('#') ? collapsed : `#${collapsed}`;
+    const key = withHash.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      normalized.push(withHash);
+    }
+  });
+  return normalized;
+}
+
+function buildGeminiImagePart(imageData) {
+  if (!imageData) return null;
+  if (imageData.startsWith('data:')) {
+    const match = imageData.match(/^data:(.+?);base64,(.+)$/);
+    if (!match) return null;
+    return {
+      inline_data: {
+        mime_type: match[1],
+        data: match[2],
+      },
+    };
+  }
+  return {
+    image_url: {
+      url: imageData,
+    },
+  };
+}
 
 function timeAgo(date) {
   const d = typeof date === 'string' ? new Date(date) : date;
@@ -65,29 +262,41 @@ function UserCard() {
       } catch {}
     })();
   }, []);
-  if (!me) return (
-    <div className="flex items-center gap-3">
-      <Avatar name="you" />
-      <div className="leading-tight">
-        <div className="text-sm font-semibold text-black dark:text-white">you</div>
-        <div className="text-xs text-black dark:text-white">Signed in</div>
+  if (!me) {
+    return (
+      <div className="flex items-center gap-3">
+        <Avatar name="you" />
+        <div className="leading-tight">
+          <div className="text-sm font-semibold text-black dark:text-white">you</div>
+          <div className="text-xs text-black dark:text-white">Signed in</div>
+        </div>
+        <ThemeToggle className="ml-auto shrink-0" />
       </div>
-    </div>
-  );
+    );
+  }
   return (
-    <Link href={`/u/${me.username}`} className="flex items-center gap-3">
-      <Avatar name={me.username} src={me.profilePic} />
-      <div className="leading-tight">
-        <div className="text-sm font-semibold text-black dark:text-white">{me.username}</div>
-        <div className="text-xs text-black dark:text-white">View profile</div>
-      </div>
-      <div className="ml-auto text-xs font-semibold text-sky-600">Open</div>
-    </Link>
+    <div className="flex items-center gap-3">
+      <Link href={`/u/${me.username}`} className="flex flex-1 items-center gap-3">
+        <Avatar name={me.username} src={me.profilePic} />
+        <div className="leading-tight">
+          <div className="text-sm font-semibold text-black dark:text-white">{me.username}</div>
+          <div className="text-xs text-black dark:text-white">View profile</div>
+        </div>
+      </Link>
+      <ThemeToggle className="ml-auto shrink-0" />
+    </div>
   );
 }
 
 function Post({ item, onLike, onDelete, onShare, onUpdate }) {
   const media = item.media?.[0];
+  const sharedMedia = item.sharedFrom?.media?.[0];
+  const isPrimaryVideo = isVideoMedia(media);
+  const isSharedVideo = isVideoMedia(sharedMedia);
+  const [primaryEmbedHover, setPrimaryEmbedHover] = useState(false);
+  const [sharedEmbedHover, setSharedEmbedHover] = useState(false);
+  const isPrimaryEmbed = media?.type === 'embed';
+  const isSharedEmbed = sharedMedia?.type === 'embed';
   const [comment, setComment] = useState('');
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState([]);
@@ -97,6 +306,19 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedCaption, setEditedCaption] = useState(item.caption || '');
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryResult, setSummaryResult] = useState(null);
+  const [summaryError, setSummaryError] = useState('');
+  const [copyingSummary, setCopyingSummary] = useState(false);
+  const [pollState, setPollState] = useState(item.poll);
+  const [pollVoteLoading, setPollVoteLoading] = useState(null);
+  const primaryEmbedConfig = isPrimaryEmbed ? getEmbedConfig(media?.url, primaryEmbedHover) : null;
+  const sharedEmbedConfig = isSharedEmbed ? getEmbedConfig(sharedMedia?.url, sharedEmbedHover) : null;
+  const pollOptionsList = pollState?.options || [];
+  const pollShowResults = !!pollState && (pollState.totalVotes > 0 || pollState.userChoice !== null);
+  const scheduledDate = item.scheduledAt ? new Date(item.scheduledAt) : null;
+  const isScheduled = scheduledDate && scheduledDate > new Date();
 
   async function loadComments() {
     // Toggle comments visibility
@@ -241,6 +463,175 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
     setMenuOpen(false);
   }
 
+  function handleVideoHover(event, shouldPlay) {
+    const el = event?.currentTarget;
+    if (!el) return;
+    try {
+      if (shouldPlay) {
+        el.muted = false;
+        el.play();
+      } else {
+        el.muted = true;
+        el.pause();
+        el.currentTime = 0;
+      }
+    } catch (err) {
+      console.warn('Video hover failed', err);
+    }
+  }
+
+  async function handlePollVote(optionIndex) {
+    if (!pollState) return;
+    setPollVoteLoading(optionIndex);
+    try {
+      let data;
+      if (pollState.userChoice === optionIndex) {
+        data = await apiDelete(`/api/posts/${item._id}/poll/vote`);
+      } else {
+        data = await apiPost(`/api/posts/${item._id}/poll/vote`, { optionIndex });
+      }
+      if (data?.poll) {
+        setPollState(data.poll);
+        if (onUpdate) {
+          onUpdate({ ...item, poll: data.poll });
+        }
+      }
+    } catch (err) {
+      console.error('Poll vote error:', err);
+    } finally {
+      setPollVoteLoading(null);
+    }
+  }
+
+  async function handleSummarizePost(forceRefresh = false) {
+    setMenuOpen(false);
+    setSummaryOpen(true);
+    setSummaryError('');
+
+    if (summaryLoading && !forceRefresh) {
+      return;
+    }
+
+    if (summaryResult && !forceRefresh) {
+      return;
+    }
+
+    if (forceRefresh) {
+      setSummaryResult(null);
+    }
+
+    setSummaryLoading(true);
+
+    try {
+      let commentSample = comments;
+
+      if ((!commentSample || !commentSample.length) && (item.commentsCount || 0) > 0) {
+        try {
+          const { comments: snapshot } = await apiGet(`/api/posts/${item._id}/comments?limit=3`);
+          if (Array.isArray(snapshot) && snapshot.length) {
+            commentSample = snapshot;
+            if (!comments.length) {
+              setComments(snapshot);
+            }
+          }
+        } catch (err) {
+          console.warn('Unable to load comments for summary:', err);
+        }
+      }
+
+      const commentLines = (commentSample || [])
+        .slice(0, 3)
+        .map((c) => `${c.user?.username || 'User'}: ${c.content}`);
+
+      const contextLines = [
+        `Author: ${item.user?.username || 'Unknown user'}`,
+        `Caption: ${item.caption ? item.caption : 'No caption — primarily visual content.'}`,
+        item.sharedFrom?.user?.username
+          ? `Shared from ${item.sharedFrom.user.username}${item.sharedFrom.caption ? ` saying "${item.sharedFrom.caption}"` : ''}`
+          : null,
+        `Likes: ${item.likes || 0}`,
+        typeof item.commentsCount === 'number' ? `Comments: ${item.commentsCount}` : null,
+        item.feeling ? `Feeling tag: ${item.feeling}` : null,
+        item.activity ? `Activity tag: ${item.activity}` : null,
+        item.location?.name ? `Location: ${item.location.name}` : null,
+        item.media?.length ? `Media attachments: ${item.media.length}` : null,
+        `Posted at: ${new Date(item.createdAt).toLocaleString()}`,
+        commentLines.length
+          ? `Highlighted comments:\n${commentLines.map((line, idx) => `${idx + 1}. ${line}`).join('\n')}`
+          : null,
+      ].filter(Boolean);
+
+      const text = await callGeminiModel([
+        {
+          text: `You summarize social media posts so people get the gist fast. Review the structured details below and provide JSON exactly in this format:` +
+            '\n{"headline":"6 words max","summary":"2 short sentences with the key idea and tone","tone":"one descriptive word","takeaways":["concise highlight"],"suggestedActions":["optional action"]}' +
+            '\nDo not invent content. Here are the details:\n' +
+            contextLines.map((line) => `- ${line}`).join('\n'),
+        },
+      ]);
+
+      let parsed;
+      try {
+        parsed = tryParseGeminiJson(text);
+      } catch (err) {
+        console.warn('Summary parsing fallback:', err);
+      }
+
+      const normalized = {
+        headline: parsed?.headline?.toString().trim() || 'AI Summary',
+        summary: parsed?.summary?.toString().trim() || text.trim(),
+        tone: parsed?.tone?.toString().trim() || '',
+        takeaways: Array.isArray(parsed?.takeaways)
+          ? parsed.takeaways.map((t) => t?.toString().trim()).filter(Boolean)
+          : [],
+        suggestedActions: Array.isArray(parsed?.suggestedActions)
+          ? parsed.suggestedActions.map((s) => s?.toString().trim()).filter(Boolean)
+          : [],
+      };
+
+      if (!normalized.summary) {
+        normalized.summary = 'Unable to generate a summary for this post.';
+      }
+
+      setSummaryResult(normalized);
+    } catch (err) {
+      console.error('Summarize post error:', err);
+      setSummaryError(err.message || 'Failed to summarize post. Please try again.');
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
+  async function handleCopySummary() {
+    if (!summaryResult) return;
+    try {
+      const text = [
+        summaryResult.headline,
+        summaryResult.summary,
+        summaryResult.takeaways?.length
+          ? `Highlights:\n${summaryResult.takeaways.map((t) => `• ${t}`).join('\n')}`
+          : null,
+        summaryResult.suggestedActions?.length
+          ? `Suggested actions:\n${summaryResult.suggestedActions.map((t) => `• ${t}`).join('\n')}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        setCopyingSummary(true);
+        setTimeout(() => setCopyingSummary(false), 1600);
+      }
+    } catch (err) {
+      console.error('Copy summary failed:', err);
+    }
+  }
+
+  const closeSummaryModal = () => {
+    setSummaryOpen(false);
+  };
+
   const [menuOpen, setMenuOpen] = useState(false);
   const menuWrapRef = useRef(null);
   useEffect(() => {
@@ -250,6 +641,16 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
+  useEffect(() => {
+    setSummaryResult(null);
+    setSummaryError('');
+    setPrimaryEmbedHover(false);
+    setSharedEmbedHover(false);
+  }, [item._id]);
+
+  useEffect(() => {
+    setPollState(item.poll);
+  }, [item.poll]);
 
   return (
     <article className="mb-6 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-shadow">
@@ -266,6 +667,11 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
               ) : 'user'}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">{timeAgo(item.createdAt)}</div>
+            {isScheduled && scheduledDate && (
+              <div className="mt-1 text-[11px] font-semibold text-amber-600 dark:text-amber-300">
+                Scheduled for {scheduledDate.toLocaleString()}
+              </div>
+            )}
           </div>
         </div>
         <div className="relative" ref={menuWrapRef}>
@@ -274,8 +680,14 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
           </button>
           {menuOpen && (
             <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 shadow-lg">
+              <button
+                onClick={() => handleSummarizePost(false)}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-black dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/30 transition"
+              >
+                🧠 Summarize post
+              </button>
               {item.canDelete && (
-                <>
+                <div className="border-t border-gray-200 dark:border-gray-700">
                   <button
                     onClick={handleEditClick}
                     className="block w-full px-4 py-3 text-left text-sm font-medium text-black dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition"
@@ -288,10 +700,12 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
                   >
                     🗑️ Delete post
                   </button>
-                </>
+                </div>
               )}
               {!item.canDelete && (
-                <div className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">More options soon</div>
+                <div className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
+                  More options soon
+                </div>
               )}
             </div>
           )}
@@ -334,6 +748,58 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
         )
       )}
 
+      {pollState && (
+        <div className="px-6 pb-4">
+          <div className="rounded-2xl border border-blue-100 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-900/20">
+            <div className="px-4 py-3 border-b border-blue-100 dark:border-blue-900/40">
+              <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">{pollState.question}</p>
+              <p className="text-xs text-blue-800/70 dark:text-blue-200/70">
+                {pollState.totalVotes || 0} {pollState.totalVotes === 1 ? 'vote' : 'votes'}
+              </p>
+            </div>
+            <div className="p-4 space-y-2">
+              {pollOptionsList.map((option, idx) => {
+                const selected = pollState.userChoice === idx;
+                const percent = typeof option.percentage === 'number'
+                  ? option.percentage
+                  : (pollState.totalVotes ? Math.round(((option.votes || 0) / pollState.totalVotes) * 100) : 0);
+                return (
+                  <button
+                    key={option.text + idx}
+                    type="button"
+                    disabled={pollVoteLoading !== null}
+                    onClick={() => handlePollVote(idx)}
+                    className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                      selected
+                        ? 'border-blue-500 bg-white/80 dark:bg-slate-900/60 shadow'
+                        : 'border-blue-100 dark:border-blue-900/40 bg-white/70 dark:bg-slate-900/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-100">
+                      <span>{option.text}</span>
+                      {pollShowResults && (
+                        <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{percent}%</span>
+                      )}
+                    </div>
+                    {pollShowResults && (
+                      <div className="mt-2 h-2 rounded-full bg-blue-100 dark:bg-blue-900/40">
+                        <div
+                          className={`h-full rounded-full ${selected ? 'bg-blue-500' : 'bg-blue-300 dark:bg-blue-500/60'}`}
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    )}
+                    {selected && (
+                      <p className="mt-1 text-xs font-semibold text-blue-600 dark:text-blue-300">Your vote</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Shared Post Preview */}
       {item.sharedFrom && (
         <div className="mx-6 mb-4 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800/50">
@@ -364,12 +830,52 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
           {/* Original Post Media */}
           {item.sharedFrom.media?.[0] && (
             <div className="relative overflow-hidden bg-gray-100 dark:bg-gray-800">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img 
-                src={item.sharedFrom.media[0].url} 
-                alt="" 
-                className="w-full object-cover max-h-[300px]" 
-              />
+              {isSharedVideo ? (
+                <video
+                  src={item.sharedFrom.media[0].url}
+                  className="w-full max-h-[320px] object-cover"
+                  controls
+                  playsInline
+                  preload="metadata"
+                  muted
+                  loop
+                  onMouseEnter={(e) => handleVideoHover(e, true)}
+                  onMouseLeave={(e) => handleVideoHover(e, false)}
+                />
+              ) : isSharedEmbed ? (
+                sharedEmbedConfig ? (
+                  <div
+                    className="relative"
+                    onMouseEnter={() => setSharedEmbedHover(true)}
+                    onMouseLeave={() => setSharedEmbedHover(false)}
+                  >
+                    <iframe
+                      src={sharedEmbedConfig.src}
+                      className="w-full h-[320px]" 
+                      title="Embedded video"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      loading="lazy"
+                    />
+                    {!sharedEmbedHover && (
+                      <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/60 text-white text-xs font-semibold tracking-wide">
+                        Hover to play
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-300">
+                    Preview unavailable for this embed.
+                  </div>
+                )
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={item.sharedFrom.media[0].url}
+                  alt=""
+                  className="w-full object-cover max-h-[300px]"
+                />
+              )}
             </div>
           )}
         </div>
@@ -378,8 +884,48 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
       {/* Media (for non-shared posts) */}
       {!item.sharedFrom && media && (
         <div className="relative overflow-hidden bg-gray-100 dark:bg-gray-800">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={media.url} alt="" className="w-full object-cover max-h-[500px]" />
+          {isPrimaryVideo ? (
+            <video
+              src={media.url}
+              className="w-full max-h-[520px] object-cover"
+              controls
+              playsInline
+              preload="metadata"
+              muted
+              loop
+              onMouseEnter={(e) => handleVideoHover(e, true)}
+              onMouseLeave={(e) => handleVideoHover(e, false)}
+            />
+          ) : isPrimaryEmbed ? (
+            primaryEmbedConfig ? (
+              <div
+                className="relative"
+                onMouseEnter={() => setPrimaryEmbedHover(true)}
+                onMouseLeave={() => setPrimaryEmbedHover(false)}
+              >
+                <iframe
+                  src={primaryEmbedConfig.src}
+                  className="w-full h-[520px]"
+                  title="Embedded video"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  loading="lazy"
+                />
+                {!primaryEmbedHover && (
+                  <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/60 text-white text-xs font-semibold tracking-wide">
+                    Hover to play
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-6 text-center text-sm text-gray-600 dark:text-gray-300">
+                Preview unavailable for this link.
+              </div>
+            )
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={media.url} alt="" className="w-full object-cover max-h-[500px]" />
+          )}
         </div>
       )}
 
@@ -573,6 +1119,121 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
         post={item}
         onShare={handleSharePost}
       />
+
+      {/* Summary Modal */}
+      {summaryOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={closeSummaryModal}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-gray-100 dark:border-gray-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-blue-500 dark:text-blue-300">AI Assist</p>
+                <h3 className="text-lg font-semibold text-black dark:text-white">Post summary</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleSummarizePost(true)}
+                  disabled={summaryLoading}
+                  className="px-3 py-2 text-xs font-semibold rounded-lg border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {summaryLoading ? 'Summarizing...' : 'Regenerate'}
+                </button>
+                <button
+                  onClick={closeSummaryModal}
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+                >
+                  <Icon name="close" className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              {summaryLoading && (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-4 w-48 rounded bg-gray-200 dark:bg-gray-800" />
+                  <div className="h-3 w-full rounded bg-gray-100 dark:bg-gray-800/80" />
+                  <div className="h-3 w-11/12 rounded bg-gray-100 dark:bg-gray-800/80" />
+                  <div className="h-3 w-10/12 rounded bg-gray-100 dark:bg-gray-800/80" />
+                </div>
+              )}
+
+              {!summaryLoading && summaryError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 dark:border-red-800/60 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-200">
+                  <p>{summaryError}</p>
+                  <button
+                    onClick={() => handleSummarizePost(true)}
+                    className="mt-3 inline-flex items-center gap-1 text-red-700 dark:text-red-200 font-semibold text-xs"
+                  >
+                    <span>Try again</span>
+                    <Icon name="refresh" className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+
+              {!summaryLoading && !summaryError && summaryResult && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 text-sm font-semibold text-black dark:text-white">
+                        <Icon name="sparkles" className="h-4 w-4 text-yellow-500" />
+                        {summaryResult.headline}
+                      </span>
+                      {summaryResult.tone && (
+                        <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                          Tone: {summaryResult.tone}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-200">
+                    {summaryResult.summary}
+                  </p>
+                  {summaryResult.takeaways?.length > 0 && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Highlights</p>
+                      <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-gray-700 dark:text-gray-200">
+                        {summaryResult.takeaways.map((point, idx) => (
+                          <li key={`${point}-${idx}`}>{point}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {summaryResult.suggestedActions?.length > 0 && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Suggested actions</p>
+                      <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-gray-700 dark:text-gray-200">
+                        {summaryResult.suggestedActions.map((point, idx) => (
+                          <li key={`${point}-${idx}`}>{point}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!summaryLoading && !summaryError && !summaryResult && (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Tap <span className="font-semibold text-blue-500">Regenerate</span> to create an AI-powered summary for this post.
+                </p>
+              )}
+            </div>
+            {summaryResult && !summaryLoading && !summaryError && (
+              <div className="px-6 pb-5">
+                <button
+                  onClick={handleCopySummary}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 text-white dark:bg-blue-600 dark:text-white py-3 font-semibold hover:opacity-90 transition"
+                >
+                  {copyingSummary ? 'Copied!' : 'Copy summary'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -582,11 +1243,14 @@ export default function HomeFeed() {
   const [feed, setFeed] = useState([]);
   const captionRef = useRef(null);
   const imageUrlRef = useRef(null);
+  const previewVideoRef = useRef(null);
   const [posting, setPosting] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [composerMedia, setComposerMedia] = useState(null);
+  const [previewType, setPreviewType] = useState('image');
   const [storyGroups, setStoryGroups] = useState([]);
   const storyFileRef = useRef(null);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -598,6 +1262,7 @@ export default function HomeFeed() {
   const [aiPos, setAiPos] = useState({ top: 0, left: 0 });
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [aiCaptionOpen, setAiCaptionOpen] = useState(false);
   const [aiCaptionLoading, setAiCaptionLoading] = useState(false);
   const [aiCaptions, setAiCaptions] = useState([]);
@@ -605,6 +1270,165 @@ export default function HomeFeed() {
   const [modifyPromptOpen, setModifyPromptOpen] = useState(false);
   const [modifyPrompt, setModifyPrompt] = useState('');
   const [modifyPromptLoading, setModifyPromptLoading] = useState(false);
+  const [aiImageOpen, setAiImageOpen] = useState(false);
+  const [aiImagePrompt, setAiImagePrompt] = useState('');
+  const [aiImageStyle, setAiImageStyle] = useState('photorealistic');
+  const [aiImageAspect, setAiImageAspect] = useState('square');
+  const [aiImageLoading, setAiImageLoading] = useState(false);
+  const [aiImagePreview, setAiImagePreview] = useState(null);
+  const aiImageStyleOptions = [
+    { id: 'photorealistic', label: 'Photorealistic', emoji: '📷' },
+    { id: 'digital-art', label: 'Digital Art', emoji: '🎨' },
+    { id: 'anime', label: 'Anime', emoji: '🧚' },
+    { id: '3d', label: '3D Render', emoji: '🧊' },
+    { id: 'watercolor', label: 'Watercolor', emoji: '🖌️' },
+  ];
+  const aiImageAspectOptions = [
+    { id: 'square', label: '1:1 Square' },
+    { id: 'portrait', label: '3:4 Portrait' },
+    { id: 'landscape', label: '16:9 Landscape' },
+  ];
+  const [contentOpen, setContentOpen] = useState(false);
+  const [contentTopic, setContentTopic] = useState('');
+  const [contentTone, setContentTone] = useState('friendly');
+  const [contentLength, setContentLength] = useState('medium');
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentResult, setContentResult] = useState('');
+  const contentToneOptions = [
+    { id: 'friendly', label: 'Friendly', emoji: '😊' },
+    { id: 'professional', label: 'Professional', emoji: '💼' },
+    { id: 'bold', label: 'Bold', emoji: '🔥' },
+    { id: 'playful', label: 'Playful', emoji: '🎉' },
+    { id: 'inspirational', label: 'Inspirational', emoji: '🌟' },
+  ];
+  const contentLengthOptions = [
+    { id: 'short', label: 'Short (80 words)' },
+    { id: 'medium', label: 'Medium (150 words)' },
+    { id: 'long', label: 'Long (250 words)' },
+  ];
+  const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.heic'];
+  const [isEmbedHovering, setIsEmbedHovering] = useState(false);
+  const POLL_OPTION_LIMIT = 4;
+  const [showPollBuilder, setShowPollBuilder] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState([
+    { id: 'opt-1', text: '' },
+    { id: 'opt-2', text: '' },
+  ]);
+  const [pollError, setPollError] = useState('');
+  const [showScheduleBuilder, setShowScheduleBuilder] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleError, setScheduleError] = useState('');
+
+  function clearMediaPreview() {
+    if (previewVideoRef.current) {
+      try {
+        previewVideoRef.current.pause();
+        previewVideoRef.current.currentTime = 0;
+      } catch {}
+    }
+    setPreviewUrl('');
+    setPreviewType('image');
+    setIsEmbedHovering(false);
+    setComposerMedia(null);
+    if (imageUrlRef.current) {
+      imageUrlRef.current.value = '';
+    }
+  }
+
+  function resetPollBuilder() {
+    setShowPollBuilder(false);
+    setPollQuestion('');
+    setPollOptions([
+      { id: `opt-${Date.now()}`, text: '' },
+      { id: `opt-${Date.now() + 1}`, text: '' },
+    ]);
+    setPollError('');
+  }
+
+  function addPollOption() {
+    setPollOptions((prev) => {
+      if (prev.length >= POLL_OPTION_LIMIT) return prev;
+      return [...prev, { id: `opt-${Date.now()}-${prev.length}`, text: '' }];
+    });
+  }
+
+  function updatePollOption(id, value) {
+    setPollOptions((prev) => prev.map((opt) => (opt.id === id ? { ...opt, text: value } : opt)));
+  }
+
+  function removePollOption(id) {
+    setPollOptions((prev) => {
+      if (prev.length <= 2) return prev;
+      return prev.filter((opt) => opt.id !== id);
+    });
+  }
+
+  function resetScheduleBuilder() {
+    setShowScheduleBuilder(false);
+    setScheduleDate('');
+    setScheduleError('');
+  }
+
+  function normalizeExternalUrl(rawLink) {
+    if (!rawLink) return '';
+    let formatted = rawLink.trim();
+    if (!formatted) return '';
+    if (!/^https?:\/\//i.test(formatted)) {
+      formatted = `https://${formatted}`;
+    }
+    try {
+      const url = new URL(formatted);
+      return url.toString();
+    } catch (err) {
+      setError('Please enter a valid URL');
+      return '';
+    }
+  }
+
+  function detectMediaTypeFromUrl(url) {
+    if (!url) return 'image';
+    try {
+      const parsed = new URL(url);
+      const sanitized = parsed.pathname.toLowerCase();
+      if (VIDEO_FILE_EXTENSIONS.some((ext) => sanitized.endsWith(ext))) {
+        return 'video';
+      }
+      if (imageExtensions.some((ext) => sanitized.endsWith(ext))) {
+        return 'image';
+      }
+      if (getEmbedConfig(url, false)) {
+        return 'embed';
+      }
+    } catch {}
+    return 'image';
+  }
+
+  function handleAddLink() {
+    const link = prompt('Enter an image or video link URL:');
+    if (!link) {
+      setUploadMenuOpen(false);
+      return;
+    }
+
+    const formatted = normalizeExternalUrl(link);
+    if (!formatted) {
+      setUploadMenuOpen(false);
+      return;
+    }
+
+    const type = detectMediaTypeFromUrl(formatted);
+    setPreviewType(type);
+    setPreviewUrl(formatted);
+    setIsEmbedHovering(false);
+    if (imageUrlRef.current) {
+      imageUrlRef.current.value = formatted;
+    }
+    setComposerMedia({ url: formatted, type });
+    setSelectedCaption(null);
+    setUploadMenuOpen(false);
+    setError('');
+  }
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const [analyzeLoading, setAnalyzeLoading] = useState(false);
   const [imageAnalysis, setImageAnalysis] = useState(null);
@@ -622,20 +1446,17 @@ export default function HomeFeed() {
     } catch {}
   }
 
-  async function handleFileSelect(e) {
-    const file = e.target.files?.[0];
+  async function handleImageUpload(file) {
     if (!file) {
       setError('No file selected');
       return;
     }
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       setError('Please select a valid image file (JPG, PNG, GIF, WebP)');
       return;
     }
 
-    // Validate file size (max 10MB)
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       setError('Image size must be less than 10MB');
@@ -646,35 +1467,114 @@ export default function HomeFeed() {
     setUploading(true);
 
     try {
-      // Step 1: Create local preview immediately
       const preview = URL.createObjectURL(file);
+      setPreviewType('image');
       setPreviewUrl(preview);
+      setIsEmbedHovering(false);
 
-      // Step 2: Upload to Cloudinary
-      console.log('Starting upload for:', file.name, 'Size:', file.size);
       const uploaded = await uploadImageToCloudinary(file, 'aisocial');
-      
-      console.log('Upload successful:', uploaded.url);
-      
-      // Step 3: Set the permanent URL in the hidden input
+
       if (imageUrlRef.current) {
         imageUrlRef.current.value = uploaded.url;
       }
-      
-      // Step 4: Update preview to permanent URL
+
       setPreviewUrl(uploaded.url);
-      
-      // Show success feedback
-      console.log('Image ready for posting or AI tools');
+      setPreviewType('image');
+      setIsEmbedHovering(false);
+      setComposerMedia({
+        url: uploaded.url,
+        width: uploaded.width,
+        height: uploaded.height,
+        format: uploaded.format,
+        type: 'image',
+      });
     } catch (err) {
       console.error('Upload error:', err);
       setError(`Upload failed: ${err.message}`);
-      setPreviewUrl(''); // Clear preview on error
-      if (imageUrlRef.current) {
-        imageUrlRef.current.value = '';
-      }
+      clearMediaPreview();
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleVideoUpload(file) {
+    if (!file) {
+      setError('No file selected');
+      return;
+    }
+
+    if (!file.type.startsWith('video/')) {
+      setError('Please select a valid video file (MP4, MOV, WebM, etc.)');
+      return;
+    }
+
+    const maxSize = 60 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setError('Video size must be less than 60MB');
+      return;
+    }
+
+    setError('');
+    setUploading(true);
+
+    try {
+      const preview = URL.createObjectURL(file);
+      setPreviewType('video');
+      setPreviewUrl(preview);
+      setIsEmbedHovering(false);
+
+      const uploaded = await uploadVideoToCloudinary(file, 'aisocial/videos');
+      if (imageUrlRef.current) {
+        imageUrlRef.current.value = uploaded.url;
+      }
+
+      setPreviewUrl(uploaded.url);
+      setPreviewType('video');
+      setComposerMedia({
+        url: uploaded.url,
+        width: uploaded.width,
+        height: uploaded.height,
+        format: uploaded.format,
+        duration: uploaded.duration,
+        type: 'video',
+      });
+    } catch (err) {
+      console.error('Video upload error:', err);
+      setError(`Video upload failed: ${err.message}`);
+      clearMediaPreview();
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function getImageDataForGemini() {
+    const directUrl = imageUrlRef.current?.value;
+    const localPreview = previewUrl;
+
+    if (!directUrl && !localPreview) {
+      return null;
+    }
+
+    const source = localPreview?.startsWith('blob:')
+      ? localPreview
+      : (directUrl || localPreview);
+
+    if (!source) return null;
+    if (source.startsWith('data:')) return source;
+
+    try {
+      const response = await fetch(source);
+      const blob = await response.blob();
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      return dataUrl;
+    } catch (error) {
+      console.warn('Falling back to raw image reference for Gemini:', error);
+      return source;
     }
   }
 
@@ -683,60 +1583,50 @@ export default function HomeFeed() {
     setError('');
     setCaptionMood(mood);
     try {
-      const imageUrl = imageUrlRef.current?.value;
-      const localPreview = previewUrl;
-
-      if (!imageUrl && !localPreview) {
+      if (previewType !== 'image') {
+        setError('AI caption generator works with images only. Please upload or link to a photo.');
+        setAiCaptionLoading(false);
+        return;
+      }
+      const imageData = await getImageDataForGemini();
+      if (!imageData) {
         setError('Please upload an image first to generate a caption');
         setAiCaptionLoading(false);
         return;
       }
 
-      let imageData = imageUrl;
-
-      // If it's a local blob URL, convert to base64
-      if (localPreview && localPreview.startsWith('blob:')) {
-        try {
-          const response = await fetch(localPreview);
-          const blob = await response.blob();
-          const reader = new FileReader();
-          
-          await new Promise((resolve, reject) => {
-            reader.onload = () => {
-              imageData = reader.result; // This is base64 data URL
-              resolve();
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        } catch (err) {
-          console.error('Error converting image to base64:', err);
-          setError('Failed to process local image');
-          setAiCaptionLoading(false);
-          return;
-        }
+      const imagePart = buildGeminiImagePart(imageData);
+      if (!imagePart) {
+        setError('Unable to prepare image for captioning');
+        setAiCaptionLoading(false);
+        return;
       }
 
-      // Call backend API to generate caption using Gemini
-      const response = await apiPost('/api/ai/generate-caption', {
-        imageUrl: imageData, // Can be URL or base64 data URL
-        mood: mood // Include mood preference
-      });
+      const text = await callGeminiModel([
+        {
+          text: `You are an AI social media caption expert. Based on the attached image and the mood "${mood}", write 4 unique captions under 140 characters. Mix engaging hooks, emojis, and trendy tone when appropriate. Return ONLY a JSON array of caption strings with no additional commentary.`,
+        },
+        imagePart,
+      ]);
 
-      if (response.captions && Array.isArray(response.captions)) {
-        setAiCaptions(response.captions);
-        setAiCaptionOpen(true);
-        
-        // Position popover ABOVE AI Tools button
-        if (aiBtnRef.current) {
-          const rect = aiBtnRef.current.getBoundingClientRect();
-          setCaptionPopoverPos({
-            top: rect.top + window.scrollY - 380, // Positioned above with space for popover
-            left: Math.max(10, rect.left + window.scrollX - 150) // Center it roughly
-          });
-        }
-      } else {
-        setError('Failed to generate captions');
+      const parsed = tryParseGeminiJson(text);
+      const captions = Array.isArray(parsed)
+        ? parsed.map((caption) => caption?.toString?.().trim()).filter(Boolean)
+        : [];
+
+      if (!captions.length) {
+        throw new Error('Failed to parse captions from Gemini');
+      }
+
+      setAiCaptions(captions);
+      setAiCaptionOpen(true);
+
+      if (aiBtnRef.current) {
+        const rect = aiBtnRef.current.getBoundingClientRect();
+        setCaptionPopoverPos({
+          top: rect.top + window.scrollY - 380,
+          left: Math.max(10, rect.left + window.scrollX - 150),
+        });
       }
     } catch (err) {
       setError(err.message || 'Failed to generate AI caption');
@@ -750,6 +1640,11 @@ export default function HomeFeed() {
     setAnalyzeLoading(true);
     setError('');
     try {
+      if (previewType !== 'image') {
+        setError('Image analysis can only run on photos. Please upload or link to an image.');
+        setAnalyzeLoading(false);
+        return;
+      }
       const imageUrl = imageUrlRef.current?.value;
       const localPreview = previewUrl;
 
@@ -801,46 +1696,52 @@ export default function HomeFeed() {
     setHashtagsLoading(true);
     setError('');
     try {
-      const imageUrl = imageUrlRef.current?.value;
-      const localPreview = previewUrl;
+      if (previewType !== 'image') {
+        setError('Hashtag suggestions currently support images only. Please attach a photo.');
+        setHashtagsLoading(false);
+        return;
+      }
+      const imageData = await getImageDataForGemini();
       const caption = captionRef.current?.value || '';
 
-      if (!imageUrl && !localPreview) {
+      if (!imageData) {
         setError('Please upload an image first to generate hashtags');
         setHashtagsLoading(false);
         return;
       }
 
-      let imageData = imageUrl;
-
-      if (localPreview && localPreview.startsWith('blob:')) {
-        try {
-          const response = await fetch(localPreview);
-          const blob = await response.blob();
-          const reader = new FileReader();
-          
-          await new Promise((resolve, reject) => {
-            reader.onload = () => {
-              imageData = reader.result;
-              resolve();
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        } catch (err) {
-          console.error('Error converting image to base64:', err);
-          setError('Failed to process local image');
-          setHashtagsLoading(false);
-          return;
-        }
+      const imagePart = buildGeminiImagePart(imageData);
+      if (!imagePart) {
+        setError('Unable to prepare image for hashtags');
+        setHashtagsLoading(false);
+        return;
       }
 
-      const response = await apiPost('/api/ai/generate-hashtags', {
-        imageUrl: imageData,
-        caption: caption
-      });
+      const text = await callGeminiModel([
+        {
+          text: `You are an AI social media strategist. Analyze the attached image${caption ? ` and this caption: "${caption}"` : ''} to produce highly relevant Instagram hashtags. Respond ONLY with JSON in this shape: {"contentType":"string","trendingTags":["#tag"],"nicherTags":["#tag"],"brandTags":["#tag"],"tags":["#tag"]}. Each tag must start with #, contain no spaces, and be 2-3 words fused. Prioritize authenticity and avoid duplicates.`,
+        },
+        imagePart,
+      ]);
 
-      setGeneratedHashtags(response);
+      const parsed = tryParseGeminiJson(text) || {};
+      const trendingTags = normalizeHashtagList(parsed.trendingTags || parsed.trending || []);
+      const nicheTags = normalizeHashtagList(parsed.nicherTags || parsed.nicheTags || []);
+      const brandTags = normalizeHashtagList(parsed.brandTags || []);
+      const combinedTags = normalizeHashtagList([
+        ...trendingTags,
+        ...nicheTags,
+        ...brandTags,
+        ...(parsed.tags || []),
+      ]);
+
+      setGeneratedHashtags({
+        contentType: parsed.contentType || 'AI Suggested Content',
+        trendingTags,
+        nicherTags: nicheTags,
+        brandTags,
+        tags: combinedTags,
+      });
       setHashtagsOpen(true);
       
       // Position popover above AI Tools button
@@ -856,6 +1757,53 @@ export default function HomeFeed() {
       console.error('Hashtag Generation Error:', err);
     } finally {
       setHashtagsLoading(false);
+    }
+  }
+
+  async function handleGenerateAiImage() {
+    if (!aiImagePrompt.trim()) {
+      alert('Please describe what you want to generate');
+      return;
+    }
+
+    setAiImageLoading(true);
+    try {
+      // Placeholder behavior for future backend integration
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      setAiImagePreview({
+        prompt: aiImagePrompt.trim(),
+        style: aiImageStyle,
+        aspect: aiImageAspect,
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error('AI Image generation placeholder error:', err);
+    } finally {
+      setAiImageLoading(false);
+    }
+  }
+
+  async function handleGenerateContent() {
+    if (!contentTopic.trim()) {
+      alert('Please enter a topic or idea');
+      return;
+    }
+
+    setContentLoading(true);
+    setError('');
+    try {
+      const text = await callGeminiModel([
+        {
+          text: `You are a world-class social media content copywriter. Write engaging content for the topic "${contentTopic.trim()}" with a ${contentTone} tone. Target length: ${contentLength}. Include compelling hooks, supportive details, and a closing CTA. Format as short paragraphs with optional bullet points when it improves readability. Return only the final content without any preface.`,
+        },
+      ]);
+
+      setContentResult(text.trim());
+    } catch (err) {
+      setError(err.message || 'Failed to generate content');
+      console.error('Content Generation Error:', err);
+    } finally {
+      setContentLoading(false);
     }
   }
 
@@ -923,12 +1871,17 @@ export default function HomeFeed() {
     return () => document.removeEventListener('keydown', onKey);
   }, [viewerOpen, nextStory, prevStory]);
 
+  useEffect(() => {
+    setIsEmbedHovering(false);
+  }, [previewUrl, previewType]);
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(e) {
       if (!e.target.closest('.composer-dropdown')) {
         setUploadMenuOpen(false);
         setAiMenuOpen(false);
+        setComposerMenuOpen(false);
       }
     }
     document.addEventListener('click', handleClickOutside);
@@ -944,29 +1897,86 @@ export default function HomeFeed() {
   async function submitPost(e) {
     e.preventDefault();
     const caption = (captionRef.current?.value || '').trim();
-    const imageUrl = (imageUrlRef.current?.value || '').trim();
-    
-    // Validate input
-    if (!caption && !imageUrl) {
-      setError('Please add a caption or upload an image');
+    const mediaUrl = (imageUrlRef.current?.value || '').trim();
+    const trimmedQuestion = pollQuestion.trim();
+    const cleanedOptions = pollOptions.map((opt) => opt.text.trim()).filter(Boolean);
+    const wantsPoll = showPollBuilder || !!trimmedQuestion || cleanedOptions.length > 0;
+    const hasSchedule = showScheduleBuilder || !!scheduleDate;
+    let scheduledAt = null;
+
+    if (wantsPoll && (!trimmedQuestion || cleanedOptions.length < 2)) {
+      setPollError('Please add a question and at least two poll options');
       return;
     }
-    
+
+    if (hasSchedule) {
+      if (!scheduleDate) {
+        setScheduleError('Pick a date and time in the future');
+        return;
+      }
+      const parsed = new Date(scheduleDate);
+      if (Number.isNaN(parsed.getTime())) {
+        setScheduleError('Invalid date');
+        return;
+      }
+      if (parsed.getTime() <= Date.now() + 60 * 1000) {
+        setScheduleError('Schedule time must be at least 1 minute in the future');
+        return;
+      }
+      scheduledAt = parsed.toISOString();
+    }
+
+    const pollPayload = wantsPoll
+      ? {
+          question: trimmedQuestion,
+          options: cleanedOptions.slice(0, POLL_OPTION_LIMIT).map((text) => ({ text })),
+        }
+      : null;
+
+    // Validate input
+    if (!caption && !mediaUrl && !pollPayload && !scheduledAt) {
+      setError('Please add a caption, poll, media, or schedule');
+      return;
+    }
+
     setPosting(true);
     setError('');
-    
+    setPollError('');
+    setScheduleError('');
+
     try {
       const payload = { caption: caption || undefined };
-      if (imageUrl) payload.media = [{ url: imageUrl }];
-      
+      if (mediaUrl) {
+        const baseMedia = composerMedia && composerMedia.url === mediaUrl
+          ? composerMedia
+          : { url: mediaUrl, type: detectMediaTypeFromUrl(mediaUrl) };
+        payload.media = [
+          {
+            url: baseMedia.url,
+            width: baseMedia.width,
+            height: baseMedia.height,
+            format: baseMedia.format,
+            duration: baseMedia.duration,
+            type: baseMedia.type || detectMediaTypeFromUrl(baseMedia.url),
+          },
+        ];
+      }
+      if (pollPayload) {
+        payload.poll = pollPayload;
+      }
+      if (scheduledAt) {
+        payload.scheduledAt = scheduledAt;
+      }
+
       const { post } = await apiPost('/api/posts', payload);
       setFeed((prev) => [post, ...prev]);
       
       // Clear form
       if (captionRef.current) captionRef.current.value = '';
-      if (imageUrlRef.current) imageUrlRef.current.value = '';
-      setPreviewUrl('');
+      clearMediaPreview();
       setSelectedCaption(null);
+      resetPollBuilder();
+      resetScheduleBuilder();
     } catch (e) {
       setError(e.message || 'Failed to post');
       console.error('Post error:', e);
@@ -1008,8 +2018,8 @@ export default function HomeFeed() {
 
   function handleUpdate(updatedPost) {
     // Update the post in the feed with the edited version
-    setFeed((prev) => prev.map((p) => (p._id === updatedPost._id ? { ...p, caption: updatedPost.caption } : p)));
-  }
+      setFeed((prev) => prev.map((p) => (p._id === updatedPost._id ? { ...p, ...updatedPost } : p)));
+    }
 
   const [suggestions, setSuggestions] = useState([]);
   const [followingIds, setFollowingIds] = useState(new Set());
@@ -1063,7 +2073,7 @@ export default function HomeFeed() {
   }
 
   return (
-    <div className="min-h-screen bg-transparent">
+    <div className="min-h-screen bg-white dark:bg-slate-950 transition-colors">
       <div className="flex">
         {/* Left Navbar */}
         <Navbar />
@@ -1207,25 +2217,222 @@ export default function HomeFeed() {
           {/* Composer */}
           <form onSubmit={submitPost} className="mb-6 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-slate-900 shadow-sm">
             <div className="px-6 py-5">
-              <textarea 
-                ref={captionRef} 
-                placeholder="What's on your mind?" 
-                rows={3} 
-                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 resize-none" 
-              />
-              
-              {previewUrl && (
-                <div className="mt-4 relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-                  <Image 
-                    src={previewUrl} 
-                    alt="preview" 
-                    width={400}
-                    height={256}
-                    className="w-full object-cover max-h-64" 
-                  />
+              <div className="relative">
+                <textarea 
+                  ref={captionRef} 
+                  placeholder="What's on your mind?" 
+                  rows={3} 
+                  className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 resize-none" 
+                />
+                <div className="composer-dropdown absolute -top-5 right-0">
                   <button
                     type="button"
-                    onClick={() => setPreviewUrl('')}
+                    aria-label="Composer options"
+                    onClick={() => setComposerMenuOpen((prev) => !prev)}
+                    className="rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-600 shadow px-2 py-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <span className="flex items-center gap-1">
+                      {[0, 1, 2].map((dot) => (
+                        <span key={dot} className="h-1 w-1 rounded-full bg-current block" />
+                      ))}
+                    </span>
+                  </button>
+                  {composerMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-48 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 shadow-lg z-10">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPollBuilder(true);
+                          setComposerMenuOpen(false);
+                          setPollError('');
+                        }}
+                        className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                      >
+                        🗳️ Create Poll
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowScheduleBuilder(true);
+                          setComposerMenuOpen(false);
+                          setScheduleError('');
+                        }}
+                        className="w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 border-t border-gray-100 dark:border-gray-700"
+                      >
+                        📅 Schedule
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {showPollBuilder && (
+                <div className="mt-4 rounded-2xl border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/10 p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">Poll</p>
+                      <p className="text-xs text-blue-700/70 dark:text-blue-200/70">Ask a question and let your audience vote.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetPollBuilder}
+                      className="text-xs font-semibold text-blue-700 dark:text-blue-300 hover:underline"
+                    >
+                      Remove Poll
+                    </button>
+                  </div>
+                  <input
+                    value={pollQuestion}
+                    onChange={(e) => setPollQuestion(e.target.value)}
+                    placeholder="Ask a question"
+                    className="mt-3 w-full rounded-lg border border-blue-200 dark:border-blue-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-black dark:text-white placeholder-blue-500/70 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <div className="mt-3 space-y-2">
+                    {pollOptions.map((option, index) => (
+                      <div key={option.id} className="flex items-center gap-2">
+                        <input
+                          value={option.text}
+                          onChange={(e) => updatePollOption(option.id, e.target.value)}
+                          placeholder={`Option ${index + 1}`}
+                          className="flex-1 rounded-lg border border-blue-200 dark:border-blue-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-black dark:text-white placeholder-blue-500/70 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                        {pollOptions.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() => removePollOption(option.id)}
+                            className="text-xs font-semibold text-red-500 hover:text-red-600"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {pollOptions.length < POLL_OPTION_LIMIT && (
+                    <button
+                      type="button"
+                      onClick={addPollOption}
+                      className="mt-3 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:underline"
+                    >
+                      + Add another option
+                    </button>
+                  )}
+                  {pollError && <p className="mt-2 text-xs text-red-600">{pollError}</p>}
+                </div>
+              )}
+
+              {showScheduleBuilder && (
+                <div className="mt-4 rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-900/10 p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-purple-900 dark:text-purple-200">Schedule Post</p>
+                      <p className="text-xs text-purple-800/70 dark:text-purple-200/70">Pick a future date and time to publish.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetScheduleBuilder}
+                      className="text-xs font-semibold text-purple-700 dark:text-purple-300 hover:underline"
+                    >
+                      Remove Schedule
+                    </button>
+                  </div>
+                  <input
+                    type="datetime-local"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    min={new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16)}
+                    className="mt-3 w-full rounded-lg border border-purple-200 dark:border-purple-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  />
+                  {scheduleDate && (
+                    <p className="mt-2 text-xs text-purple-800 dark:text-purple-200">
+                      Scheduled for {new Date(scheduleDate).toLocaleString()}
+                    </p>
+                  )}
+                  {scheduleError && <p className="mt-2 text-xs text-red-600">{scheduleError}</p>}
+                </div>
+              )}
+
+              {previewUrl && (
+                <div className="mt-4 relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+                  {previewType === 'video' && (
+                    <div className="relative">
+                      <video
+                        ref={previewVideoRef}
+                        src={previewUrl}
+                        className="w-full max-h-64 object-cover"
+                        muted
+                        loop
+                        playsInline
+                        preload="metadata"
+                        onMouseEnter={(e) => {
+                          try {
+                            e.currentTarget.play();
+                          } catch {}
+                        }}
+                        onMouseLeave={(e) => {
+                          try {
+                            e.currentTarget.pause();
+                            e.currentTarget.currentTime = 0;
+                          } catch {}
+                        }}
+                      />
+                      <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/60 text-white text-xs font-semibold tracking-wide">
+                        Hover to play
+                      </div>
+                    </div>
+                  )}
+                  {previewType === 'embed' && (
+                    (() => {
+                      const embedConfig = getEmbedConfig(previewUrl, isEmbedHovering);
+                      if (!embedConfig) {
+                        return (
+                          <div className="p-6 text-center text-sm text-gray-600 dark:text-gray-300">
+                            Preview unavailable for this link.{' '}
+                            <a
+                              href={previewUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 dark:text-blue-400 underline"
+                            >
+                              Open link
+                            </a>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div
+                          className="relative"
+                          onMouseEnter={() => setIsEmbedHovering(true)}
+                          onMouseLeave={() => setIsEmbedHovering(false)}
+                        >
+                          <iframe
+                            src={embedConfig.src}
+                            className="w-full max-h-64 aspect-video"
+                            allow="autoplay; encrypted-media; picture-in-picture"
+                            allowFullScreen
+                            loading="lazy"
+                          />
+                          {!isEmbedHovering && (
+                            <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/60 text-white text-xs font-semibold tracking-wide">
+                              Hover to play
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
+                  )}
+                  {previewType === 'image' && (
+                    <Image 
+                      src={previewUrl} 
+                      alt="preview" 
+                      width={400}
+                      height={256}
+                      className="w-full object-cover max-h-64" 
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={clearMediaPreview}
                     className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-1.5 transition"
                   >
                     ✕
@@ -1306,8 +2513,9 @@ export default function HomeFeed() {
                   const input = document.createElement('input');
                   input.type = 'file';
                   input.accept = 'image/*';
-                  input.onchange = async (e) => {
-                    await handleFileSelect({ target: { files: [input.files[0]] } });
+                  input.onchange = async () => {
+                    const file = input.files?.[0];
+                    await handleImageUpload(file);
                     setUploadMenuOpen(false);
                   };
                   input.click();
@@ -1318,23 +2526,25 @@ export default function HomeFeed() {
               </button>
               <button
                 type="button"
+                disabled={uploading}
                 onClick={() => {
-                  alert('Video upload coming soon!');
-                  setUploadMenuOpen(false);
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = 'video/*';
+                  input.onchange = async () => {
+                    const file = input.files?.[0];
+                    await handleVideoUpload(file);
+                    setUploadMenuOpen(false);
+                  };
+                  input.click();
                 }}
-                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 transition border-t border-gray-100 dark:border-gray-700"
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 transition border-t border-gray-100 dark:border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                🎥 Upload Video
+                {uploading ? '⏳ Uploading...' : '🎥 Upload Video'}
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const link = prompt('Enter link URL:');
-                  if (link && imageUrlRef.current) {
-                    imageUrlRef.current.value = link;
-                  }
-                  setUploadMenuOpen(false);
-                }}
+                onClick={handleAddLink}
                 className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 transition border-t border-gray-100 dark:border-gray-700"
               >
                 🔗 Add Link
@@ -1362,17 +2572,6 @@ export default function HomeFeed() {
               <button
                 type="button"
                 onClick={() => {
-                  analyzeImageQuality();
-                  setAiMenuOpen(false);
-                }}
-                disabled={analyzeLoading}
-                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {analyzeLoading ? '⏳ Analyzing...' : '🎨 Enhance Image Quality'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
                   generateHashtagsForImage();
                   setAiMenuOpen(false);
                 }}
@@ -1384,12 +2583,32 @@ export default function HomeFeed() {
               <button
                 type="button"
                 onClick={() => {
+                  setAiImageOpen(true);
+                  setAiMenuOpen(false);
+                }}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700"
+              >
+                🖼️ Generate AI Image
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setContentOpen(true);
+                  setAiMenuOpen(false);
+                }}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700"
+              >
+                ✍️ Write Content
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   setModifyPromptOpen(true);
                   setAiMenuOpen(false);
                 }}
                 className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700"
               >
-                🖌️ Modify with Prompt
+                ✨ Modify Image
               </button>
             </div>
           )}
@@ -1502,13 +2721,13 @@ export default function HomeFeed() {
             />
           )}
 
-          {/* Modify with Prompt Modal */}
+          {/* Modify Image Modal */}
           {modifyPromptOpen && (
             <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
               <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 px-6 py-4">
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">🖌️ Modify Image with Prompt</h2>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">✨🤖 Modify Image</h2>
                   <button
                     onClick={() => setModifyPromptOpen(false)}
                     className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl leading-none"
@@ -1520,6 +2739,30 @@ export default function HomeFeed() {
                 {/* Content */}
                 <div className="px-6 py-6">
                   <div className="space-y-4">
+                    <div className="p-4 rounded-xl bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-700 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">🎨 Enhance Image Quality</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                          Analyze your photo for smart lighting, color, and composition tweaks before applying prompts.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const hasImage = imageUrlRef.current?.value || previewUrl;
+                          if (!hasImage) {
+                            setError('Please upload an image first to analyze');
+                            return;
+                          }
+                          setModifyPromptOpen(false);
+                          analyzeImageQuality();
+                        }}
+                        disabled={analyzeLoading}
+                        className="w-full md:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-blue-500 text-white text-sm font-semibold hover:from-purple-600 hover:to-blue-600 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {analyzeLoading ? '⏳ Enhancing...' : '✨ Run Enhance'}
+                      </button>
+                    </div>
+
                     {/* Quick Prompt Options */}
                     <div>
                       <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Quick Options:</p>
@@ -1584,7 +2827,7 @@ export default function HomeFeed() {
                   <button
                     onClick={() => {
                       if (modifyPrompt.trim()) {
-                        console.log('🖌️ Image modification with prompt:', modifyPrompt);
+                        console.log('✨🤖 Image modification with prompt:', modifyPrompt);
                         alert(`✨ Modifying image with prompt:\n\n"${modifyPrompt}"\n\nFeature coming soon!`);
                         setModifyPromptOpen(false);
                         setModifyPrompt('');
@@ -1596,6 +2839,296 @@ export default function HomeFeed() {
                     className="flex-1 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {modifyPromptLoading ? '⏳ Processing...' : '✨ Apply Modification'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Generate AI Image Modal */}
+          {aiImageOpen && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+              <div className="w-full max-w-2xl rounded-3xl bg-white dark:bg-slate-950 border border-purple-200 dark:border-purple-800 shadow-2xl overflow-hidden">
+                <div className="flex items-center justify-between border-b border-purple-100 dark:border-purple-800 px-6 py-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/30 dark:to-blue-900/30">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">🖼️ Generate AI Image</h2>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">Describe your concept and we&apos;ll craft a stunning AI visual</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAiImageOpen(false);
+                      setAiImagePrompt('');
+                      setAiImagePreview(null);
+                    }}
+                    className="text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white text-2xl leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="px-6 py-6 space-y-5 max-h-[80vh] overflow-y-auto">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Quick ideas</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {['Dreamy neon cyberpunk skyline', 'Golden hour beach with flying drones', 'Studio portrait of a cyber samurai', 'Whimsical watercolor forest'].map((idea) => (
+                        <button
+                          key={idea}
+                          onClick={() => setAiImagePrompt(idea)}
+                          className="px-3 py-2 rounded-lg text-xs font-medium bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-200 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition"
+                        >
+                          {idea}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Choose a style</p>
+                    <div className="flex flex-wrap gap-2">
+                      {aiImageStyleOptions.map((style) => (
+                        <button
+                          key={style.id}
+                          onClick={() => setAiImageStyle(style.id)}
+                          className={`px-3 py-2 rounded-full text-xs font-semibold border transition ${
+                            aiImageStyle === style.id
+                              ? 'bg-purple-600 text-white border-purple-600'
+                              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-purple-400'
+                          }`}
+                        >
+                          <span className="mr-1">{style.emoji}</span>
+                          {style.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Aspect ratio</p>
+                    <div className="flex flex-wrap gap-2">
+                      {aiImageAspectOptions.map((aspect) => (
+                        <button
+                          key={aspect.id}
+                          onClick={() => setAiImageAspect(aspect.id)}
+                          className={`px-3 py-2 rounded-full text-xs font-semibold border transition ${
+                            aiImageAspect === aspect.id
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-blue-400'
+                          }`}
+                        >
+                          {aspect.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Prompt</label>
+                    <textarea
+                      value={aiImagePrompt}
+                      onChange={(e) => setAiImagePrompt(e.target.value)}
+                      placeholder="Describe the scene, lighting, mood, and key subjects..."
+                      className="w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      rows={4}
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Tip: add descriptive keywords like lighting (soft, neon), medium (oil painting, photo), and atmosphere.</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-dashed border-purple-300 dark:border-purple-700 bg-purple-50/50 dark:bg-purple-900/10 p-4">
+                    {aiImagePreview ? (
+                      <div className="space-y-3">
+                        <div className="relative w-full rounded-2xl bg-gradient-to-br from-purple-400/60 to-blue-500/60 border border-white/40 backdrop-blur text-white text-center px-6 py-16">
+                          <div className="text-4xl mb-3">✨</div>
+                          <p className="font-semibold text-lg">AI Image Preview</p>
+                          <p className="text-sm opacity-90 mt-2">
+                            {aiImagePreview.style.replace('-', ' ')} • {aiImagePreview.aspect.toUpperCase()} • Mock preview
+                          </p>
+                        </div>
+                        <div className="text-sm text-gray-700 dark:text-gray-200">
+                          <div className="font-semibold">Prompt</div>
+                          <p>{aiImagePreview.prompt}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-8">
+                        Describe your scene and click generate to preview settings.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="border-t border-purple-100 dark:border-purple-800 px-6 py-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 flex flex-col md:flex-row gap-3">
+                  <button
+                    onClick={() => {
+                      setAiImageOpen(false);
+                      setAiImagePrompt('');
+                      setAiImagePreview(null);
+                    }}
+                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-white font-semibold hover:bg-white dark:hover:bg-slate-900 transition"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleGenerateAiImage}
+                    disabled={aiImageLoading}
+                    className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold hover:from-purple-700 hover:to-blue-700 transition disabled:opacity-60"
+                  >
+                    {aiImageLoading ? '⏳ Generating...' : 'Generate Preview'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Write Content Modal */}
+          {contentOpen && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+              <div className="w-full max-w-3xl rounded-3xl bg-white dark:bg-slate-950 border border-purple-200 dark:border-purple-800 shadow-2xl overflow-hidden">
+                <div className="flex items-center justify-between border-b border-purple-100 dark:border-purple-800 px-6 py-4 bg-gradient-to-r from-purple-50 to-emerald-50 dark:from-purple-900/30 dark:to-emerald-900/30">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">✍️ AI Content Writer</h2>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">Craft persuasive posts, captions, or articles for any topic</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setContentOpen(false);
+                      setContentTopic('');
+                      setContentResult('');
+                    }}
+                    className="text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white text-2xl leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="px-6 py-6 space-y-5 max-h-[80vh] overflow-y-auto">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Popular ideas</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                      {[
+                        'Launch update for new product feature',
+                        'Motivational Monday post for entrepreneurs',
+                        'Travel guide for hidden gems in Bali',
+                        'Tips for balancing remote work and wellness',
+                        'Storytelling thread about startup journey',
+                        'AI in creative workflows explainer',
+                      ].map((idea) => (
+                        <button
+                          key={idea}
+                          onClick={() => setContentTopic(idea)}
+                          className="px-3 py-2 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition"
+                        >
+                          {idea}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Tone</p>
+                      <div className="flex flex-wrap gap-2">
+                        {contentToneOptions.map((tone) => (
+                          <button
+                            key={tone.id}
+                            onClick={() => setContentTone(tone.id)}
+                            className={`px-3 py-2 rounded-full text-xs font-semibold border transition ${
+                              contentTone === tone.id
+                                ? 'bg-emerald-600 text-white border-emerald-600'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'
+                            }`}
+                          >
+                            <span className="mr-1">{tone.emoji}</span>
+                            {tone.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Length</p>
+                      <div className="flex flex-wrap gap-2">
+                        {contentLengthOptions.map((length) => (
+                          <button
+                            key={length.id}
+                            onClick={() => setContentLength(length.id)}
+                            className={`px-3 py-2 rounded-full text-xs font-semibold border transition ${
+                              contentLength === length.id
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-blue-400'
+                            }`}
+                          >
+                            {length.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Topic or angle</label>
+                    <input
+                      value={contentTopic}
+                      onChange={(e) => setContentTopic(e.target.value)}
+                      placeholder="e.g. 5 reasons why mindful mornings boost productivity"
+                      className="w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Generated content</p>
+                    <div className="rounded-2xl border border-dashed border-emerald-300 dark:border-emerald-700 bg-emerald-50/40 dark:bg-emerald-900/10 p-4 space-y-3">
+                      {contentResult ? (
+                        <div className="space-y-4">
+                          <div className="text-sm text-gray-800 dark:text-gray-100 whitespace-pre-line leading-relaxed">
+                            {contentResult}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(contentResult);
+                              }}
+                              className="px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-white text-sm font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition"
+                            >
+                              📋 Copy
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (captionRef.current) {
+                                  captionRef.current.value = contentResult;
+                                  setContentOpen(false);
+                                }
+                              }}
+                              className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-emerald-600 text-white text-sm font-semibold hover:from-purple-700 hover:to-emerald-700 transition"
+                            >
+                              ➕ Use in caption
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-8">
+                          Describe a topic and click generate to craft content.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-purple-100 dark:border-purple-800 px-6 py-4 bg-gradient-to-r from-purple-50 to-emerald-50 dark:from-purple-900/20 dark:to-emerald-900/20 flex flex-col md:flex-row gap-3">
+                  <button
+                    onClick={() => {
+                      setContentOpen(false);
+                      setContentTopic('');
+                      setContentResult('');
+                    }}
+                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-white font-semibold hover:bg-white dark:hover:bg-slate-900 transition"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleGenerateContent}
+                    disabled={contentLoading}
+                    className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-blue-600 text-white font-semibold hover:from-emerald-700 hover:to-blue-700 transition disabled:opacity-60"
+                  >
+                    {contentLoading ? '⏳ Writing...' : 'Generate Content'}
                   </button>
                 </div>
               </div>

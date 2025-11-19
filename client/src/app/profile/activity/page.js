@@ -1,7 +1,9 @@
 "use client";
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import Image from 'next/image';
+import { useEffect, useState, useCallback } from 'react';
 import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api';
+import { isVideoMedia } from '@/lib/media';
 
 function Icon({ name, className = "w-6 h-6" }) {
   const paths = {
@@ -25,11 +27,7 @@ function ActivityLog() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
-  useEffect(() => {
-    loadActivities();
-  }, [filter]);
-
-  async function loadActivities() {
+  const loadActivities = useCallback(async () => {
     setLoading(true);
     try {
       const { user } = await apiGet('/api/users/me');
@@ -83,7 +81,11 @@ function ActivityLog() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [filter]);
+
+  useEffect(() => {
+    loadActivities();
+  }, [loadActivities]);
 
   function timeAgo(date) {
     const d = typeof date === 'string' ? new Date(date) : date;
@@ -127,27 +129,48 @@ function ActivityLog() {
         <div className="text-center py-8 text-white/70">No activities yet</div>
       ) : (
         <div className="space-y-2">
-          {activities.map(activity => (
-            <div key={activity.id} className="card p-4 flex items-start justify-between">
-              <div className="flex items-start gap-3 flex-1">
-                <div className="mt-1 text-sky-400">
-                  {activity.type === 'post_created' && <Icon name="check" className="w-5 h-5" />}
-                  {activity.type === 'received_likes' && <Icon name="heart" className="w-5 h-5" />}
-                  {activity.type === 'received_comments' && <Icon name="comment" className="w-5 h-5" />}
+          {activities.map((activity) => {
+            const media = activity.data?.post?.media?.[0];
+            const showVideo = isVideoMedia(media);
+            return (
+              <div key={activity.id} className="card p-4 flex items-start justify-between">
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="mt-1 text-sky-400">
+                    {activity.type === 'post_created' && <Icon name="check" className="w-5 h-5" />}
+                    {activity.type === 'received_likes' && <Icon name="heart" className="w-5 h-5" />}
+                    {activity.type === 'received_comments' && <Icon name="comment" className="w-5 h-5" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-white font-medium">{activity.label}</p>
+                    {activity.data?.post?.caption && (
+                      <p className="text-white/70 text-sm mt-1 line-clamp-2">{activity.data.post.caption}</p>
+                    )}
+                    <p className="text-white/50 text-xs mt-2">{timeAgo(activity.timestamp)}</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-white font-medium">{activity.label}</p>
-                  {activity.data?.post?.caption && (
-                    <p className="text-white/70 text-sm mt-1 line-clamp-2">{activity.data.post.caption}</p>
-                  )}
-                  <p className="text-white/50 text-xs mt-2">{timeAgo(activity.timestamp)}</p>
-                </div>
+                {media?.url && (
+                  showVideo ? (
+                    <video
+                      src={media.url}
+                      className="w-16 h-12 rounded object-cover"
+                      muted
+                      playsInline
+                      loop
+                      preload="metadata"
+                    />
+                  ) : (
+                    <Image
+                      src={media.url}
+                      alt="Activity media preview"
+                      width={48}
+                      height={48}
+                      className="w-12 h-12 rounded object-cover"
+                    />
+                  )
+                )}
               </div>
-              {activity.data?.post?.media?.[0]?.url && (
-                <img src={activity.data.post.media[0].url} alt="" className="w-12 h-12 rounded object-cover" />
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -158,11 +181,7 @@ function TimelineReview() {
   const [taggedPosts, setTaggedPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadTaggedPosts();
-  }, []);
-
-  async function loadTaggedPosts() {
+  const loadTaggedPosts = useCallback(async () => {
     setLoading(true);
     try {
       const { user } = await apiGet('/api/users/me');
@@ -176,7 +195,11 @@ function TimelineReview() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadTaggedPosts();
+  }, [loadTaggedPosts]);
 
   async function handleApproval(postId, action) {
     try {
@@ -190,7 +213,7 @@ function TimelineReview() {
   return (
     <div className="space-y-4">
       <div className="text-white/70 text-sm mb-4">
-        Review and manage posts you've been tagged in
+        Review and manage posts you&apos;ve been tagged in
       </div>
 
       {loading ? (
@@ -199,17 +222,38 @@ function TimelineReview() {
         <div className="text-center py-8 text-white/70">No pending tagged posts</div>
       ) : (
         <div className="space-y-4">
-          {taggedPosts.map(post => (
-            <div key={post._id} className="card p-4">
-              <div className="flex items-start justify-between mb-3">
+          {taggedPosts.map((post) => {
+            const media = post.media?.[0];
+            const showVideo = isVideoMedia(media);
+            return (
+              <div key={post._id} className="card p-4">
+                <div className="flex items-start justify-between mb-3">
                 <div>
                   <p className="text-white font-medium">{post.user?.username || 'Someone'} tagged you</p>
                   <p className="text-white/70 text-sm">{post.caption?.substring(0, 60)}...</p>
                 </div>
               </div>
               
-              {post.media?.[0]?.url && (
-                <img src={post.media[0].url} alt="" className="w-full h-48 object-cover rounded mb-3" />
+              {media?.url && (
+                showVideo ? (
+                  <video
+                    src={media.url}
+                    className="w-full h-48 object-cover rounded mb-3"
+                    controls
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  <div className="relative w-full h-48 rounded mb-3 overflow-hidden">
+                    <Image
+                      src={media.url}
+                      alt={post.caption || 'Tagged post preview'}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 512px"
+                      className="object-cover"
+                    />
+                  </div>
+                )
               )}
 
               <div className="flex gap-2">
@@ -227,7 +271,8 @@ function TimelineReview() {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -241,11 +286,7 @@ function ManagePosts() {
   const [sortBy, setSortBy] = useState('newest');
   const [filterAge, setFilterAge] = useState('all');
 
-  useEffect(() => {
-    loadPosts();
-  }, [sortBy, filterAge]);
-
-  async function loadPosts() {
+  const loadPosts = useCallback(async () => {
     setLoading(true);
     try {
       const { user } = await apiGet('/api/users/me');
@@ -277,7 +318,11 @@ function ManagePosts() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [filterAge, sortBy]);
+
+  useEffect(() => {
+    loadPosts();
+  }, [loadPosts]);
 
   function togglePost(postId) {
     const newSelected = new Set(selectedPosts);
@@ -401,27 +446,48 @@ function ManagePosts() {
           </button>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {posts.map(post => (
-              <div
-                key={post._id}
-                onClick={() => togglePost(post._id)}
-                className={`aspect-square rounded overflow-hidden cursor-pointer border-2 transition-all ${
-                  selectedPosts.has(post._id)
-                    ? 'border-sky-500 ring-2 ring-sky-500'
-                    : 'border-transparent hover:border-gray-600'
-                }`}
-              >
-                {post.media?.[0]?.url && (
-                  <img src={post.media[0].url} alt="" className="w-full h-full object-cover" />
-                )}
-                <div className="w-full h-full bg-gray-800 flex items-end justify-between p-2">
-                  <span className="text-white/70 text-xs">{timeAgo(post.createdAt)}</span>
-                  {selectedPosts.has(post._id) && (
-                    <Icon name="check" className="w-4 h-4 text-sky-400" />
+            {posts.map((post) => {
+              const media = post.media?.[0];
+              const showVideo = isVideoMedia(media);
+              return (
+                <div
+                  key={post._id}
+                  onClick={() => togglePost(post._id)}
+                  className={`aspect-square rounded overflow-hidden cursor-pointer border-2 transition-all ${
+                    selectedPosts.has(post._id)
+                      ? 'border-sky-500 ring-2 ring-sky-500'
+                      : 'border-transparent hover:border-gray-600'
+                  }`}
+                >
+                  {media?.url && (
+                    showVideo ? (
+                      <video
+                        src={media.url}
+                        className="w-full h-full object-cover"
+                        muted
+                        loop
+                        playsInline
+                        preload="metadata"
+                      />
+                    ) : (
+                      <Image
+                        src={media.url}
+                        alt={post.caption || 'Post media preview'}
+                        width={600}
+                        height={600}
+                        className="w-full h-full object-cover"
+                      />
+                    )
                   )}
+                  <div className="w-full h-full bg-gray-800 flex items-end justify-between p-2">
+                    <span className="text-white/70 text-xs">{timeAgo(post.createdAt)}</span>
+                    {selectedPosts.has(post._id) && (
+                      <Icon name="check" className="w-4 h-4 text-sky-400" />
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { authRequired } from '../middleware/auth.js';
-import { create, getUserPosts, feed, likePost, unlikePost, addComment, listComments, deletePost, updatePost, reactPost, unreactPost, sharePost, pinPost, unpinPost, listTaggedPhotos, searchPosts, searchHashtags, likeComment, unlikeComment, replyToComment, getReplies } from '../controllers/post.controller.js';
+import { create, getUserPosts, feed, listVideos, likePost, unlikePost, addComment, listComments, deletePost, updatePost, reactPost, unreactPost, sharePost, pinPost, unpinPost, listTaggedPhotos, searchPosts, searchHashtags, likeComment, unlikeComment, replyToComment, getReplies, votePoll, clearPollVote } from '../controllers/post.controller.js';
 
 const router = Router();
 
 router.post('/', authRequired, create);
 router.get('/user/:username', authRequired, getUserPosts);
 router.get('/feed', authRequired, feed);
+router.get('/videos', authRequired, listVideos);
 router.get('/search', authRequired, searchPosts);
 router.post('/:id/like', authRequired, likePost);
 router.post('/:id/unlike', authRequired, unlikePost);
@@ -22,6 +23,8 @@ router.post('/:postId/comments/:commentId/like', authRequired, likeComment);
 router.delete('/:postId/comments/:commentId/like', authRequired, unlikeComment);
 router.post('/:postId/comments/:commentId/reply', authRequired, replyToComment);
 router.get('/:postId/comments/:commentId/replies', authRequired, getReplies);
+router.post('/:id/poll/vote', authRequired, votePoll);
+router.delete('/:id/poll/vote', authRequired, clearPollVote);
 router.delete('/:id', authRequired, deletePost);
 router.patch('/:id', authRequired, updatePost);
 

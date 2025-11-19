@@ -1,3 +1,5 @@
 node_modules/
 .next/
 .eslintcache
+src/app/u/\[username\]/page_old.js
+src/app/u/\[username\]/page_old_backup.js

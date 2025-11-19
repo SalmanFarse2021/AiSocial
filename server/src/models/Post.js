@@ -11,8 +11,20 @@ const postSchema = new mongoose.Schema(
         width: Number,
         height: Number,
         format: String,
+        type: { type: String, enum: ['image', 'video', 'embed'], default: 'image' },
+        duration: Number,
       },
     ],
+    poll: {
+      question: { type: String, trim: true },
+      allowMultiple: { type: Boolean, default: false },
+      options: [
+        {
+          text: { type: String, trim: true },
+          voters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+        },
+      ],
+    },
     likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     commentsCount: { type: Number, default: 0 },
     // privacy and audience
@@ -43,6 +55,8 @@ const postSchema = new mongoose.Schema(
     pinnedAt: { type: Date },
     // optional album association for photo organization
     album: { type: mongoose.Schema.Types.ObjectId, ref: 'Album', index: true },
+    scheduledAt: { type: Date, default: null },
+    status: { type: String, enum: ['scheduled', 'published'], default: 'published' },
   },
   { timestamps: true }
 );

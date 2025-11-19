@@ -640,7 +640,8 @@ export default function UserProfile() {
                   </div>
                 )}
               </div>
-            )}
+            </div>
+          )}
 
             {/* Friends Tab */}
             {activeTab === 'friends' && (

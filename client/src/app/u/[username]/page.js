@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { apiGet, apiPost, apiPatch, API_BASE, authHeaders } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiDelete, API_BASE, authHeaders } from '@/lib/api';
 import Navbar from '@/components/Navbar';
+import { getEmbedConfig, isVideoMedia } from '@/lib/media';
 
 // Utility functions
 function timeAgo(date) {
@@ -31,6 +32,59 @@ function formatDate(dateStr) {
 
 // Post Card Component
 function PostCard({ post, onPostUpdated }) {
+  const media = post.media?.[0];
+  const isVideo = isVideoMedia(media);
+  const isEmbed = media?.type === 'embed';
+  const [embedHover, setEmbedHover] = useState(false);
+  const embedConfig = isEmbed ? getEmbedConfig(media?.url, embedHover) : null;
+  const scheduledDate = post.scheduledAt ? new Date(post.scheduledAt) : null;
+  const isScheduled = scheduledDate && scheduledDate > new Date();
+  const pollOptionsList = pollState?.options || [];
+  const pollShowResults = !!pollState && (pollState.totalVotes > 0 || pollState.userChoice !== null);
+  const [pollState, setPollState] = useState(post.poll);
+  const [pollVoteLoading, setPollVoteLoading] = useState(null);
+
+  useEffect(() => {
+    setPollState(post.poll);
+  }, [post.poll]);
+
+  const handleVideoHover = (event, shouldPlay) => {
+    const el = event?.currentTarget;
+    if (!el) return;
+    try {
+      if (shouldPlay) {
+        el.muted = false;
+        el.play();
+      } else {
+        el.muted = true;
+        el.pause();
+        el.currentTime = 0;
+      }
+    } catch (err) {
+      console.warn('Profile video hover failed', err);
+    }
+  };
+
+  async function handlePollVote(optionIndex) {
+    if (!pollState) return;
+    setPollVoteLoading(optionIndex);
+    try {
+      let data;
+      if (pollState.userChoice === optionIndex) {
+        data = await apiDelete(`/api/posts/${post._id}/poll/vote`);
+      } else {
+        data = await apiPost(`/api/posts/${post._id}/poll/vote`, { optionIndex });
+      }
+      if (data?.poll) {
+        setPollState(data.poll);
+        onPostUpdated?.({ ...post, poll: data.poll });
+      }
+    } catch (err) {
+      console.error('Profile poll vote error:', err);
+    } finally {
+      setPollVoteLoading(null);
+    }
+  }
   return (
     <article className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200 mb-4">
       <header className="flex items-center gap-3 px-4 py-3">
@@ -44,6 +98,11 @@ function PostCard({ post, onPostUpdated }) {
               {timeAgo(post.createdAt)}
             </span>
           </div>
+          {isScheduled && scheduledDate && (
+            <div className="text-[11px] font-semibold text-amber-600 dark:text-amber-300">
+              Scheduled for {scheduledDate.toLocaleString()}
+            </div>
+          )}
         </div>
         {post.canDelete && (
           <button
@@ -70,15 +129,105 @@ function PostCard({ post, onPostUpdated }) {
       {post.caption && (
         <div className="px-4 pb-3 text-sm dark:text-gray-200">{post.caption}</div>
       )}
+
+      {pollState && (
+        <div className="px-4 pb-3">
+          <div className="rounded-2xl border border-blue-100 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-900/10">
+            <div className="px-3 py-2 border-b border-blue-100 dark:border-blue-900/50">
+              <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">{pollState.question}</p>
+              <p className="text-xs text-blue-800/70 dark:text-blue-200/70">
+                {pollState.totalVotes || 0} {pollState.totalVotes === 1 ? 'vote' : 'votes'}
+              </p>
+            </div>
+            <div className="p-3 space-y-2">
+              {pollOptionsList.map((option, idx) => {
+                const selected = pollState.userChoice === idx;
+                const percent = typeof option.percentage === 'number'
+                  ? option.percentage
+                  : (pollState.totalVotes ? Math.round(((option.votes || 0) / pollState.totalVotes) * 100) : 0);
+                return (
+                  <button
+                    key={option.text + idx}
+                    type="button"
+                    disabled={pollVoteLoading !== null}
+                    onClick={() => handlePollVote(idx)}
+                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+                      selected ? 'border-blue-500 bg-white/80 dark:bg-slate-900/60' : 'border-blue-100 dark:border-blue-900/40 bg-white/70 dark:bg-slate-900/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-800 dark:text-gray-100">{option.text}</span>
+                      {pollShowResults && (
+                        <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{percent}%</span>
+                      )}
+                    </div>
+                    {pollShowResults && (
+                      <div className="mt-2 h-2 rounded-full bg-blue-100 dark:bg-blue-900/40">
+                        <div
+                          className={`h-full rounded-full ${selected ? 'bg-blue-500' : 'bg-blue-300 dark:bg-blue-500/60'}`}
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    )}
+                    {selected && (
+                      <p className="mt-1 text-xs font-semibold text-blue-600 dark:text-blue-300">Your vote</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       
-      {post.media?.[0]?.url && (
+      {media?.url && (
         <div className="bg-gray-100 dark:bg-gray-900">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img 
-            src={post.media[0].url} 
-            alt="" 
-            className="max-h-[640px] w-full object-cover" 
-          />
+          {isVideo ? (
+            <video
+              src={media.url}
+              className="max-h-[640px] w-full object-cover"
+              controls
+              playsInline
+              preload="metadata"
+              muted
+              loop
+              onMouseEnter={(e) => handleVideoHover(e, true)}
+              onMouseLeave={(e) => handleVideoHover(e, false)}
+            />
+          ) : isEmbed ? (
+            embedConfig ? (
+              <div
+                className="relative"
+                onMouseEnter={() => setEmbedHover(true)}
+                onMouseLeave={() => setEmbedHover(false)}
+              >
+                <iframe
+                  src={embedConfig.src}
+                  className="max-h-[640px] w-full"
+                  title="Embedded video"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  loading="lazy"
+                />
+                {!embedHover && (
+                  <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/60 text-white text-xs font-semibold tracking-wide">
+                    Hover to play
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-4 text-center text-sm text-gray-600 dark:text-gray-300">
+                Preview unavailable for this link.
+              </div>
+            )
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={media.url}
+              alt=""
+              className="max-h-[640px] w-full object-cover"
+            />
+          )}
         </div>
       )}
       

@@ -2,12 +2,34 @@
 import { useState } from 'react';
 import { Icon } from './Navbar';
 import UserSelectorModal from './UserSelectorModal';
+import { getEmbedConfig, isVideoMedia } from '@/lib/media';
 
 export default function ShareModal({ isOpen, onClose, post, onShare }) {
   const [shareCaption, setShareCaption] = useState('');
   const [copying, setCopying] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [showUserSelector, setShowUserSelector] = useState(false);
+  const [embedHover, setEmbedHover] = useState(false);
+  const isVideo = isVideoMedia(post?.media?.[0]);
+  const isEmbed = post?.media?.[0]?.type === 'embed';
+  const embedConfig = isEmbed ? getEmbedConfig(post.media?.[0]?.url, embedHover) : null;
+
+  const handleVideoHover = (event, shouldPlay) => {
+    const el = event?.currentTarget;
+    if (!el) return;
+    try {
+      if (shouldPlay) {
+        el.muted = false;
+        el.play();
+      } else {
+        el.muted = true;
+        el.pause();
+        el.currentTime = 0;
+      }
+    } catch (err) {
+      console.warn('Share modal video hover error', err);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -72,12 +94,78 @@ export default function ShareModal({ isOpen, onClose, post, onShare }) {
               </div>
             </div>
           </div>
-          {post.caption && (
-            <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
-              {post.caption}
+        {post.caption && (
+          <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+            {post.caption}
+          </p>
+        )}
+        {post.media?.[0] && (
+          <div className="mt-3 rounded-xl overflow-hidden relative">
+            {isVideo ? (
+              <video
+                src={post.media[0].url}
+                className="w-full max-h-56 object-cover"
+                controls
+                playsInline
+                preload="metadata"
+                muted
+                loop
+                onMouseEnter={(e) => handleVideoHover(e, true)}
+                onMouseLeave={(e) => handleVideoHover(e, false)}
+              />
+            ) : isEmbed ? (
+              embedConfig ? (
+                <div
+                  className="relative"
+                  onMouseEnter={() => setEmbedHover(true)}
+                  onMouseLeave={() => setEmbedHover(false)}
+                >
+                  <iframe
+                    src={embedConfig.src}
+                    className="w-full h-56"
+                    title="Embedded video preview"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                  {!embedHover && (
+                    <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/60 text-white text-xs font-semibold tracking-wide">
+                      Hover to play
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                  Preview unavailable for this link.
+                </div>
+              )
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={post.media[0].url}
+                alt="Post media"
+                className="w-full max-h-56 object-cover"
+              />
+            )}
+          </div>
+        )}
+        {post.poll && (
+          <div className="mt-3 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/20 p-4">
+            <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">{post.poll.question}</p>
+            <div className="mt-2 space-y-2">
+              {(post.poll.options || []).map((opt, idx) => (
+                <div key={opt.text + idx} className="rounded-lg border border-blue-100 dark:border-blue-800 bg-white/70 dark:bg-slate-900/30 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 flex items-center justify-between">
+                  <span>{opt.text}</span>
+                  <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{typeof opt.percentage === 'number' ? `${opt.percentage}%` : ''}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-blue-700/70 dark:text-blue-200/70">
+              {post.poll.totalVotes || 0} {post.poll.totalVotes === 1 ? 'vote' : 'votes'}
             </p>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
 
         {/* Share Options */}
         <div className="p-4 space-y-3">

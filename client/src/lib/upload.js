@@ -138,6 +138,67 @@ export async function uploadImageToCloudinary(file, folder = 'aisocial') {
   }
 }
 
+export async function uploadVideoToCloudinary(file, folder = 'aisocial/videos') {
+  try {
+    console.log('🎬 Starting video upload for:', file?.name);
+
+    if (!file) {
+      throw new Error('No video file provided');
+    }
+
+    if (!file.type.startsWith('video/')) {
+      throw new Error(`Invalid file type: ${file.type}. Expected video file.`);
+    }
+
+    if (file.size === 0) {
+      throw new Error('Video file is empty');
+    }
+
+    const maxSize = 60 * 1024 * 1024; // 60MB
+    if (file.size > maxSize) {
+      throw new Error('Video size must be less than 60MB');
+    }
+
+    const signatureData = await getCloudinarySignature(folder);
+    const { timestamp, folder: fld, signature, cloudName, apiKey } = signatureData;
+
+    if (!cloudName || !apiKey || !signature) {
+      throw new Error('Invalid upload credentials - missing cloudName, apiKey, or signature');
+    }
+
+    const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
+    const form = new FormData();
+    form.append('file', file);
+    form.append('api_key', apiKey);
+    form.append('timestamp', timestamp);
+    form.append('signature', signature);
+    form.append('folder', fld);
+
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      body: form,
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      const errorMsg = data?.error?.message || data?.message || 'Upload failed';
+      throw new Error(`Cloudinary error (${res.status}): ${errorMsg}`);
+    }
+
+    return {
+      url: data.secure_url || data.url,
+      width: data.width,
+      height: data.height,
+      format: data.format,
+      duration: data.duration,
+      publicId: data.public_id,
+    };
+  } catch (err) {
+    console.error('❌ Video upload error:', err);
+    throw err;
+  }
+}
+
 export function dataUrlToFile(dataUrl, filename = 'image.png') {
   const arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1];
   const bstr = atob(arr[1]);

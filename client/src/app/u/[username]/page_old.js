@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { apiGet, apiPost, apiPatch, API_BASE, authHeaders } from '@/lib/api';
 import { uploadImageToCloudinary, dataUrlToFile } from '@/lib/upload';
 import Navbar from '@/components/Navbar';
@@ -116,7 +116,7 @@ export default function UserProfile() {
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
   const [friends, setFriends] = useState([]);
-  const [activeTab, setActiveTab] = useState('posts');
+  const [friendTotal, setFriendTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
@@ -125,8 +125,7 @@ export default function UserProfile() {
   const coverInputRef = useRef(null);
   const profileInputRef = useRef(null);
   const [outgoingReqs, setOutgoingReqs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
+  const [incomingReqs, setIncomingReqs] = useState([]);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [avatarFrameOn, setAvatarFrameOn] = useState(false);
   const [showViewer, setShowViewer] = useState(false);
@@ -141,6 +140,8 @@ export default function UserProfile() {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [showCropper, setShowCropper] = useState(false);
   // removed unused refs
+
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     (async () => {
@@ -179,7 +180,7 @@ export default function UserProfile() {
     })();
   }, [username]);
 
-  const activeTab = (search.get('tab') || 'posts').toLowerCase();
+  const activeTab = (searchParams?.get('tab') || 'posts').toLowerCase();
   const setTab = (t) => router.replace(`/u/${username}?tab=${t}`);
 
   async function toggleFollow() {

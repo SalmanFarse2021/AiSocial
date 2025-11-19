@@ -213,7 +213,7 @@ export default function Navbar() {
           
           {/* Search Button */}
           <button 
-            onClick={() => setSearchOpen(!searchOpen)}
+            onClick={() => setSearchOpen(true)}
             className="w-full group flex items-center gap-3.5 rounded-xl px-3 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
           >
             <div className="flex h-9 w-9 items-center justify-center">
@@ -485,6 +485,15 @@ export default function Navbar() {
             )}
 
           <a 
+            href="/videos" 
+            className="group flex items-center gap-3.5 rounded-xl px-3 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
+          >
+            <div className="flex h-9 w-9 items-center justify-center">
+              <Icon name="reels" className="h-6 w-6 group-hover:scale-110 transition-transform duration-200" />
+            </div>
+            <span className="font-semibold text-[15px]">Videos</span>
+          </a>
+          <a 
             href="/messages" 
             className="group flex items-center gap-3.5 rounded-xl px-3 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
           >
@@ -561,11 +570,17 @@ export default function Navbar() {
             <Icon name="home" className="h-6 w-6" />
           </a>
           <button 
-            onClick={() => setSearchOpen(!searchOpen)}
+            onClick={() => setSearchOpen(true)}
             className="p-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
           >
             <Icon name="search" className="h-6 w-6" />
           </button>
+          <a 
+            href="/videos" 
+            className="p-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
+          >
+            <Icon name="reels" className="h-6 w-6" />
+          </a>
           <a 
             href="/messages" 
             className="p-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"

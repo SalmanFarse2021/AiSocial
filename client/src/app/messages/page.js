@@ -96,7 +96,7 @@ export default function MessagesPage() {
 
   if (isCreatingConversation) {
     return (
-      <div className="flex w-full h-screen overflow-hidden pt-[60px] md:pt-0">
+      <div className="flex w-full h-screen overflow-hidden pt-[60px] md:pt-0 bg-white dark:bg-slate-950 transition-colors">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -109,7 +109,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="flex w-full h-screen overflow-hidden pt-[60px] md:pt-0">
+    <div className="flex w-full h-screen overflow-hidden pt-[60px] md:pt-0 bg-white dark:bg-slate-950 transition-colors">
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <Messenger compact={false} conversationId={conversationId} />

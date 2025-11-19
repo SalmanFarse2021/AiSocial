@@ -1,18 +1,30 @@
 'use client';
 
 import { useState } from 'react';
-import { generateCaptions, CaptionSuggestions } from '@/services/aiService';
+import { generateCaptions } from '@/services/aiService';
+
+type CaptionTab = 'short' | 'long' | 'funny' | 'emotional' | 'hashtags';
+
+interface CaptionResults {
+  shortCaption: string;
+  longCaption: string;
+  funnyCaption: string;
+  emotionalCaption: string;
+  hashtags: string;
+}
 
 interface CaptionGeneratorProps {
-  imageUrl: string | null;
+  imageUrl?: string | null;
   onSelectCaption: (caption: string) => void;
 }
 
+const TAB_OPTIONS: CaptionTab[] = ['short', 'long', 'funny', 'emotional', 'hashtags'];
+
 export default function CaptionGenerator({ imageUrl, onSelectCaption }: CaptionGeneratorProps) {
   const [loading, setLoading] = useState(false);
-  const [captions, setCaptions] = useState<CaptionSuggestions | null>(null);
+  const [captions, setCaptions] = useState<CaptionResults | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTab, setSelectedTab] = useState<'short' | 'long' | 'funny' | 'emotional' | 'hashtags'>('short');
+  const [selectedTab, setSelectedTab] = useState<CaptionTab>('short');
 
   const handleGenerateCaption = async () => {
     if (!imageUrl) {
@@ -25,7 +37,7 @@ export default function CaptionGenerator({ imageUrl, onSelectCaption }: CaptionG
     setCaptions(null);
 
     try {
-      const generatedCaptions = await generateCaptions(imageUrl);
+      const generatedCaptions = (await generateCaptions(imageUrl)) as CaptionResults;
       setCaptions(generatedCaptions);
       setSelectedTab('short');
     } catch (err) {
@@ -36,7 +48,7 @@ export default function CaptionGenerator({ imageUrl, onSelectCaption }: CaptionG
     }
   };
 
-  const getCurrentCaption = (): string => {
+  const getCurrentCaption = () => {
     if (!captions) return '';
     switch (selectedTab) {
       case 'short':
@@ -99,7 +111,7 @@ export default function CaptionGenerator({ imageUrl, onSelectCaption }: CaptionG
         <div className="p-4 bg-white/5 border border-white/10 rounded-lg space-y-3">
           {/* Tabs */}
           <div className="flex gap-2 flex-wrap">
-            {(['short', 'long', 'funny', 'emotional', 'hashtags'] as const).map((tab) => (
+            {TAB_OPTIONS.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setSelectedTab(tab)}
