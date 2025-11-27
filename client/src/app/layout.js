@@ -6,6 +6,8 @@ export const metadata = {
   description: "AiSocial — your social world, brought together",
 };
 
+import { CallProvider } from '@/contexts/CallContext';
+
 export default function RootLayout({ children }) {
   const themeScript = `
     (function() {
@@ -30,7 +32,11 @@ export default function RootLayout({ children }) {
           dangerouslySetInnerHTML={{ __html: themeScript }}
           suppressHydrationWarning
         />
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <CallProvider>
+            {children}
+          </CallProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

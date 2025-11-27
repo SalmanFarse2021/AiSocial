@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5050';
 
-export default function LoginPage() {
+function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -15,7 +15,7 @@ export default function LoginPage() {
     setMounted(true);
     const token = searchParams.get('token');
     const username = searchParams.get('username');
-    
+
     if (token && !redirecting) {
       setRedirecting(true);
       try {
@@ -53,8 +53,8 @@ export default function LoginPage() {
               AiSocial
             </span>
           </Link>
-          <Link 
-            href="/" 
+          <Link
+            href="/"
             className="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
           >
             ← Back to Home
@@ -87,10 +87,10 @@ export default function LoginPage() {
                 className="flex items-center justify-center gap-3 w-full rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-3.5 font-semibold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-200 shadow-sm hover:shadow-md"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-5 w-5">
-                  <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.602 32.659 29.233 36 24 36 17.373 36 12 30.627 12 24S17.373 12 24 12c3.061 0 5.84 1.153 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.651-.389-3.917z"/>
-                  <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.48 16.108 18.839 12 24 12c3.061 0 5.84 1.153 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
-                  <path fill="#4CAF50" d="M24 44c5.164 0 9.86-1.977 13.409-5.192l-6.191-5.238C29.127 35.091 26.671 36 24 36c-5.215 0-9.571-3.319-11.281-7.946l-6.54 5.036C9.496 39.556 16.227 44 24 44z"/>
-                  <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.372 4.659-5.741 8-11.303 8-5.215 0-9.571-3.319-11.281-7.946l-6.54 5.036C9.496 39.556 16.227 44 24 44c11.045 0 20-8.955 20-20 0-1.341-.138-2.651-.389-3.917z"/>
+                  <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.602 32.659 29.233 36 24 36 17.373 36 12 30.627 12 24S17.373 12 24 12c3.061 0 5.84 1.153 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.651-.389-3.917z" />
+                  <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.48 16.108 18.839 12 24 12c3.061 0 5.84 1.153 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" />
+                  <path fill="#4CAF50" d="M24 44c5.164 0 9.86-1.977 13.409-5.192l-6.191-5.238C29.127 35.091 26.671 36 24 36c-5.215 0-9.571-3.319-11.281-7.946l-6.54 5.036C9.496 39.556 16.227 44 24 44z" />
+                  <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.372 4.659-5.741 8-11.303 8-5.215 0-9.571-3.319-11.281-7.946l-6.54 5.036C9.496 39.556 16.227 44 24 44c11.045 0 20-8.955 20-20 0-1.341-.138-2.651-.389-3.917z" />
                 </svg>
                 <span>Continue with Google</span>
               </a>
@@ -100,7 +100,7 @@ export default function LoginPage() {
                 className="flex items-center justify-center gap-3 w-full rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-3.5 font-semibold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-200 shadow-sm hover:shadow-md"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5 fill-[#1877F2]">
-                  <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078V12.07h3.047V9.412c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953h-1.513c-1.49 0-1.953.93-1.953 1.887v2.252h3.328l-.532 3.494h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
+                  <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078V12.07h3.047V9.412c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953h-1.513c-1.49 0-1.953.93-1.953 1.887v2.252h3.328l-.532 3.494h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />
                 </svg>
                 <span>Continue with Facebook</span>
               </a>
@@ -187,5 +187,17 @@ export default function LoginPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+        <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }
