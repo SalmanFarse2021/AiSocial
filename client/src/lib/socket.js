@@ -1,7 +1,7 @@
 import io from 'socket.io-client';
 
 let socket = null;
-const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5050';
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://aisocial-d3x1.onrender.com' : 'http://localhost:5050');
 
 /**
  * Initialize Socket.io connection
