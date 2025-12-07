@@ -16,28 +16,28 @@ router.get(
 
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/?auth=failed' }),
+  passport.authenticate('google', { session: false, failureRedirect: '/login?error=oauth_failed' }),
   (req, res) => {
     try {
       const user = req.user;
       if (!user) {
         console.error('❌ No user in callback');
-        return res.redirect('/?auth=failed');
+        return res.redirect('/login?error=no_user');
       }
-      
+
       const token = signToken(user);
       console.log('✅ Google OAuth success for:', user.username);
-      
+
       const origin = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
       const redirect = new URL('/login', origin);
       redirect.searchParams.set('token', token);
       redirect.searchParams.set('username', user.username);
-      
+
       console.log('🔄 Redirecting to:', redirect.toString());
       res.redirect(redirect.toString());
     } catch (err) {
       console.error('❌ OAuth callback error:', err);
-      res.redirect('/?auth=error');
+      res.redirect('/login?error=server_error');
     }
   }
 );

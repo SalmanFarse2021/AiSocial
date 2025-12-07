@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+import { apiPost } from '@/lib/api';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5050';
 
 export default function LoginPage() {
@@ -10,12 +12,27 @@ export default function LoginPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     const token = searchParams.get('token');
     const username = searchParams.get('username');
-    
+    const errorParam = searchParams.get('error');
+
+    if (errorParam) {
+      const errorMap = {
+        'oauth_failed': 'Google login failed. Please try again.',
+        'no_user': 'No user found. Please sign up.',
+        'server_error': 'Server error during login. Please try again.',
+        'failed': 'Authentication failed.'
+      };
+      setError(errorMap[errorParam] || 'Login failed');
+    }
+
     if (token && !redirecting) {
       setRedirecting(true);
       try {
@@ -32,13 +49,32 @@ export default function LoginPage() {
         } else {
           console.error('❌ Token storage failed');
           setRedirecting(false);
+          setError('Failed to save login session');
         }
       } catch (err) {
         console.error('❌ Error storing token:', err);
         setRedirecting(false);
+        setError('Browser storage error');
       }
     }
   }, [searchParams, router, redirecting]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const data = await apiPost('/api/auth/login', { email, password });
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('username', data.user.username);
+      router.replace('/home');
+    } catch (err) {
+      setError(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col">
@@ -53,8 +89,8 @@ export default function LoginPage() {
               AiSocial
             </span>
           </Link>
-          <Link 
-            href="/" 
+          <Link
+            href="/"
             className="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
           >
             ← Back to Home
@@ -80,6 +116,62 @@ export default function LoginPage() {
 
           {/* Login Card */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 shadow-xl p-8">
+
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 text-sm text-red-600 dark:text-red-400">
+                {error}
+              </div>
+            )}
+
+            {/* Email/Password Form */}
+            <form onSubmit={handleLogin} className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition"
+                  placeholder="Enter your email"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition"
+                  placeholder="Enter your password"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3 font-semibold text-white shadow-lg hover:shadow-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+            </form>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200 dark:border-gray-700"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                  Or continue with
+                </span>
+              </div>
+            </div>
+
             {/* OAuth Buttons */}
             <div className="space-y-3">
               <a
@@ -87,10 +179,10 @@ export default function LoginPage() {
                 className="flex items-center justify-center gap-3 w-full rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-3.5 font-semibold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-200 shadow-sm hover:shadow-md"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-5 w-5">
-                  <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.602 32.659 29.233 36 24 36 17.373 36 12 30.627 12 24S17.373 12 24 12c3.061 0 5.84 1.153 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.651-.389-3.917z"/>
-                  <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.48 16.108 18.839 12 24 12c3.061 0 5.84 1.153 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
-                  <path fill="#4CAF50" d="M24 44c5.164 0 9.86-1.977 13.409-5.192l-6.191-5.238C29.127 35.091 26.671 36 24 36c-5.215 0-9.571-3.319-11.281-7.946l-6.54 5.036C9.496 39.556 16.227 44 24 44z"/>
-                  <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.372 4.659-5.741 8-11.303 8-5.215 0-9.571-3.319-11.281-7.946l-6.54 5.036C9.496 39.556 16.227 44 24 44c11.045 0 20-8.955 20-20 0-1.341-.138-2.651-.389-3.917z"/>
+                  <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.602 32.659 29.233 36 24 36 17.373 36 12 30.627 12 24S17.373 12 24 12c3.061 0 5.84 1.153 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.651-.389-3.917z" />
+                  <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.48 16.108 18.839 12 24 12c3.061 0 5.84 1.153 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" />
+                  <path fill="#4CAF50" d="M24 44c5.164 0 9.86-1.977 13.409-5.192l-6.191-5.238C29.127 35.091 26.671 36 24 36c-5.215 0-9.571-3.319-11.281-7.946l-6.54 5.036C9.496 39.556 16.227 44 24 44z" />
+                  <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.372 4.659-5.741 8-11.303 8-5.215 0-9.571-3.319-11.281-7.946l-6.54 5.036C9.496 39.556 16.227 44 24 44c11.045 0 20-8.955 20-20 0-1.341-.138-2.651-.389-3.917z" />
                 </svg>
                 <span>Continue with Google</span>
               </a>
@@ -100,7 +192,7 @@ export default function LoginPage() {
                 className="flex items-center justify-center gap-3 w-full rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-3.5 font-semibold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-200 shadow-sm hover:shadow-md"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5 fill-[#1877F2]">
-                  <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078V12.07h3.047V9.412c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953h-1.513c-1.49 0-1.953.93-1.953 1.887v2.252h3.328l-.532 3.494h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
+                  <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078V12.07h3.047V9.412c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953h-1.513c-1.49 0-1.953.93-1.953 1.887v2.252h3.328l-.532 3.494h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />
                 </svg>
                 <span>Continue with Facebook</span>
               </a>
@@ -168,6 +260,13 @@ export default function LoginPage() {
                 </div>
                 <span>Your data is protected</span>
               </div>
+            </div>
+
+            <div className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
+              Don't have an account?{' '}
+              <Link href="/signup" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                Sign up
+              </Link>
             </div>
           </div>
 

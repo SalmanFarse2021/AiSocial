@@ -34,7 +34,7 @@ const io = new Server(httpServer, {
 });
 
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 app.use(morgan('dev'));
 app.use(passport.initialize());
@@ -62,37 +62,37 @@ async function start() {
     initCloudinary();
     initPassport();
     await sanitizeUsersGeo();
-    
+
     // Socket.io setup
     io.on('connection', (socket) => {
       console.log('✅ New user connected:', socket.id);
-      
+
       // Store user ID with socket
       socket.on('user-connected', (userId) => {
         socket.userId = userId;
         socket.join(`user:${userId}`);
         console.log(`User ${userId} joined room user:${userId}`);
       });
-      
+
       // Handle sending messages
       socket.on('send-message', (data) => {
         const { conversationId, message } = data;
         console.log(`📨 Message sent in conversation ${conversationId}:`, message);
         io.to(`conversation:${conversationId}`).emit('message-received', message);
       });
-      
+
       // Join conversation room
       socket.on('join-conversation', (conversationId) => {
         socket.join(`conversation:${conversationId}`);
         console.log(`✅ Socket ${socket.id} joined conversation:${conversationId}`);
       });
-      
+
       // Leave conversation room
       socket.on('leave-conversation', (conversationId) => {
         socket.leave(`conversation:${conversationId}`);
         console.log(`❌ Socket ${socket.id} left conversation:${conversationId}`);
       });
-      
+
       // Handle typing
       socket.on('typing', (data) => {
         const { conversationId, isTyping } = data;
@@ -101,7 +101,7 @@ async function start() {
           isTyping,
         });
       });
-      
+
       // Handle reaction added
       socket.on('add-reaction', (data) => {
         const { messageId, reaction, conversationId } = data;
@@ -111,7 +111,7 @@ async function start() {
           userId: socket.userId,
         });
       });
-      
+
       // Handle reaction removed
       socket.on('remove-reaction', (data) => {
         const { messageId, reaction, conversationId } = data;
@@ -121,7 +121,7 @@ async function start() {
           userId: socket.userId,
         });
       });
-      
+
       // Handle message deletion
       socket.on('delete-message', (data) => {
         const { messageId, conversationId } = data;
@@ -129,7 +129,7 @@ async function start() {
           messageId,
         });
       });
-      
+
       // Handle message read
       socket.on('mark-read', (data) => {
         const { conversationId, userId: senderId } = data;
@@ -137,16 +137,16 @@ async function start() {
           conversationId,
         });
       });
-      
+
       socket.on('disconnect', () => {
         console.log('❌ User disconnected:', socket.id);
       });
-      
+
       socket.on('error', (error) => {
         console.error('Socket error:', error);
       });
     });
-    
+
     httpServer.listen(PORT, () => {
       console.log(`API listening on http://localhost:${PORT}`);
     });

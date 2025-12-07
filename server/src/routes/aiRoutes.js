@@ -1,10 +1,12 @@
 import express from 'express';
-import { 
-  generateCaption, 
-  analyzeImage, 
+import {
+  generateCaption,
+  analyzeImage,
   modifyImageWithPrompt,
   generateHashtags,
-  generateBio 
+  generateBio,
+  summarizePost,
+  generateImage
 } from '../controllers/aiController.js';
 import { authRequired } from '../middleware/auth.js';
 
@@ -24,5 +26,11 @@ router.post('/generate-hashtags', authRequired, generateHashtags);
 
 // Generate AI bio based on user's posts and interests
 router.post('/generate-bio', authRequired, generateBio);
+
+// Summarize post content
+router.post('/summarize-post', authRequired, summarizePost);
+
+// Generate image
+router.post('/generate-image', authRequired, generateImage);
 
 export default router;

@@ -69,7 +69,7 @@ export const generateCaption = async (req, res) => {
       // Parse data URL format: data:image/jpeg;base64,xxxxx
       const parts = imageUrl.split(",");
       base64Image = parts[1];
-      
+
       // Extract mime type
       const mimeMatch = parts[0].match(/data:([^;]+)/);
       if (mimeMatch) {
@@ -91,21 +91,21 @@ export const generateCaption = async (req, res) => {
         console.log(`✅ Image fetched successfully: ${mimeType}, Size: ${imageBuffer.byteLength} bytes`);
       } catch (fetchErr) {
         console.error(`❌ Fetch error: ${fetchErr.message}`);
-        return res.status(400).json({ 
-          error: "Failed to fetch image: " + fetchErr.message 
+        return res.status(400).json({
+          error: "Failed to fetch image: " + fetchErr.message
         });
       }
     }
 
     try {
       // Initialize the model
-      console.log(`🔄 Initializing Gemini 2.0 Flash model...`);
+      console.log(`🔄 Initializing Gemini 2.5 Flash model...`);
       const genAI = getGenAI();
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       // Create mood-specific prompt
       let moodInstructions = "";
-      switch(mood) {
+      switch (mood) {
         case "funny":
           moodInstructions = " Make them humorous, witty, and funny.";
           break;
@@ -149,7 +149,7 @@ export const generateCaption = async (req, res) => {
 
       console.log(`✅ Gemini API response received`);
       const responseText = result.response.text();
-      
+
       // Parse the response into individual captions
       const captions = responseText
         .split("\n")
@@ -162,12 +162,12 @@ export const generateCaption = async (req, res) => {
       // If Gemini API fails, use mock captions for testing
       console.warn(`⚠️ Gemini API failed: ${apiError.message}`);
       console.log(`📌 Using mock captions for mood: ${mood}`);
-      
+
       const moodKey = mood || "default";
       const captions = mockCaptions[moodKey] || mockCaptions.default;
-      
+
       // Shuffle and return 5 random captions
-      return res.json({ 
+      return res.json({
         captions: captions.sort(() => Math.random() - 0.5).slice(0, 5),
         mock: true,
         message: "Using demo captions - please configure valid Gemini API key"
@@ -180,12 +180,12 @@ export const generateCaption = async (req, res) => {
       message: error.message,
       status: error.status,
     });
-    
+
     // Final fallback: return mock captions
     const moodKey = req.body?.mood || "default";
     const captions = mockCaptions[moodKey] || mockCaptions.default;
-    
-    return res.json({ 
+
+    return res.json({
       captions: captions.sort(() => Math.random() - 0.5).slice(0, 5),
       mock: true,
       message: "Using demo captions - API error occurred"
@@ -230,7 +230,7 @@ export const analyzeImage = async (req, res) => {
       }
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `Analyze this image and provide detailed suggestions for enhancement. Include:
     1. Quality assessment (lighting, composition, focus)
@@ -253,7 +253,7 @@ export const analyzeImage = async (req, res) => {
 
     const responseText = result.response.text();
     let analysis;
-    
+
     try {
       // Extract JSON from the response
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -275,84 +275,169 @@ export const analyzeImage = async (req, res) => {
   }
 };
 
-// Generate image modification suggestions based on user prompt
+// Generate image modification// Modify image based on prompt (Analyze + Regenerate)
 export const modifyImageWithPrompt = async (req, res) => {
   try {
-    const { imageUrl, prompt: userPrompt } = req.body;
+    const { imageUrl, userPrompt } = req.body;
 
-    if (!imageUrl) {
-      return res.status(400).json({ error: "Image URL is required" });
+    if (!imageUrl || !userPrompt) {
+      return res.status(400).json({ error: "Image URL and prompt are required" });
     }
 
-    if (!userPrompt) {
-      return res.status(400).json({ error: "Modification prompt is required" });
+    console.log(`🎨 Modifying image with prompt: "${userPrompt}"`);
+
+    // LIGHTX API INTEGRATION (v2)
+    const LIGHTX_API_KEY = process.env.LIGHTX_API_KEY;
+
+    if (!LIGHTX_API_KEY) {
+      throw new Error("LightX API key is not configured");
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
-    }
+    console.log('🚀 Initiating LightX v2 Image-to-Image generation...');
+    console.log('📝 Prompt:', userPrompt);
 
-    let base64Image;
-    let mimeType = "image/jpeg";
+    // 1. Get the image buffer
+    let imageBuffer;
+    let contentType = 'image/jpeg';
 
-    if (imageUrl.startsWith("data:")) {
+    if (imageUrl.startsWith('data:')) {
       const parts = imageUrl.split(",");
-      base64Image = parts[1];
+      imageBuffer = Buffer.from(parts[1], 'base64');
       const mimeMatch = parts[0].match(/data:([^;]+)/);
-      if (mimeMatch) {
-        mimeType = mimeMatch[1];
-      }
+      if (mimeMatch) contentType = mimeMatch[1];
     } else {
-      try {
-        const imageResponse = await fetch(imageUrl);
-        if (!imageResponse.ok) {
-          return res.status(400).json({ error: "Failed to fetch image from URL" });
-        }
-        const imageBuffer = await imageResponse.arrayBuffer();
-        base64Image = Buffer.from(imageBuffer).toString("base64");
-        mimeType = imageResponse.headers.get("content-type") || "image/jpeg";
-      } catch (fetchErr) {
-        return res.status(400).json({ error: "Failed to fetch image: " + fetchErr.message });
-      }
+      console.log('📥 Fetching source image from:', imageUrl);
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) throw new Error("Failed to fetch source image");
+      const arrayBuffer = await imgRes.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuffer);
+      contentType = imgRes.headers.get('content-type') || 'image/jpeg';
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    console.log(`📦 Image size: ${imageBuffer.length} bytes, Type: ${contentType}`);
 
-    const fullPrompt = `Based on this image and the user's modification request: "${userPrompt}"
-    
-    Provide detailed technical instructions for modifying the image. Include:
-    1. Step-by-step modifications needed
-    2. Tool recommendations (Photoshop, GIMP, online tools, etc.)
-    3. Expected outcome description
-    4. Parameters to adjust (e.g., brightness +20, contrast +15, saturation +25)
-    5. Estimated difficulty level (Easy/Medium/Hard)
-    6. Before/after visual description
-    
-    Format as a detailed guide that can be understood by both technical and non-technical users.`;
-
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          data: base64Image,
-          mimeType: mimeType,
-        },
+    // 2. Get Upload URL from LightX
+    console.log('🔗 Getting LightX upload URL...');
+    const uploadRes = await fetch('https://api.lightxeditor.com/external/api/v2/uploadImageUrl', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': LIGHTX_API_KEY
       },
-      fullPrompt,
-    ]);
-
-    const responseText = result.response.text();
-
-    return res.json({ 
-      modification: responseText,
-      userPrompt: userPrompt 
+      body: JSON.stringify({
+        uploadType: "imageUrl",
+        size: imageBuffer.length,
+        contentType: contentType
+      })
     });
+
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      throw new Error(`Failed to get upload URL: ${err}`);
+    }
+
+    const uploadData = await uploadRes.json();
+    const { uploadImage: s3UploadUrl, imageUrl: lightxImageUrl } = uploadData.body;
+    console.log('✅ Got upload URL');
+
+    // 3. Upload Image to LightX S3
+    console.log('☁️ Uploading image to LightX S3...');
+    const s3Res = await fetch(s3UploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+        'Content-Length': imageBuffer.length
+      },
+      body: imageBuffer
+    });
+
+    if (!s3Res.ok) {
+      const err = await s3Res.text();
+      throw new Error(`Failed to upload image to LightX S3: ${err}`);
+    }
+    console.log('✅ Image uploaded to LightX S3');
+
+    // 4. Generate Image (v2)
+    console.log('🎨 Requesting generation with Image URL:', lightxImageUrl);
+    const generateRes = await fetch('https://api.lightxeditor.com/external/api/v2/image2image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': LIGHTX_API_KEY
+      },
+      body: JSON.stringify({
+        imageUrl: lightxImageUrl,
+        textPrompt: userPrompt
+      })
+    });
+
+    if (!generateRes.ok) {
+      const err = await generateRes.text();
+      throw new Error(`Generation request failed: ${err}`);
+    }
+
+    const generateData = await generateRes.json();
+    const orderId = generateData.body.orderId;
+    console.log('⏳ Order ID:', orderId);
+
+    // 5. Poll for Result
+    const newImageUrl = await pollLightXStatus(orderId, LIGHTX_API_KEY);
+    console.log('✅ Final Modified Image URL:', newImageUrl);
+
+    return res.json({
+      modification: "Image modified successfully",
+      imageUrl: newImageUrl,
+      originalDescription: "Modified with LightX v2",
+      combinedPrompt: userPrompt
+    });
+
   } catch (error) {
     console.error("Image Modification Error:", error);
     return res.status(500).json({
       error: error.message || "Failed to process modification request",
+      details: error.toString()
     });
   }
 };
+
+// Helper function for polling LightX status (v2)
+async function pollLightXStatus(orderId, apiKey) {
+  const maxAttempts = 10; // 10 attempts * 3 seconds = 30 seconds
+  const interval = 3000; // 3 seconds
+
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(resolve => setTimeout(resolve, interval));
+
+    console.log(`⏳ Polling attempt ${i + 1}/${maxAttempts}...`);
+    const res = await fetch('https://api.lightxeditor.com/external/api/v2/order-status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+      },
+      body: JSON.stringify({ orderId })
+    });
+
+    if (!res.ok) {
+      console.warn('⚠️ Polling request failed, retrying...');
+      continue;
+    }
+
+    const data = await res.json();
+    const status = data.body?.status;
+    console.log('📊 Poll Status:', status);
+
+    if (status === 'active') {
+      return data.body.output;
+    }
+
+    if (status === 'failed') {
+      throw new Error("LightX generation failed");
+    }
+  }
+
+  throw new Error("LightX generation timed out");
+}
 
 // Generate hashtags and tags for image
 export const generateHashtags = async (req, res) => {
@@ -394,9 +479,9 @@ export const generateHashtags = async (req, res) => {
     }
 
     try {
-      console.log(`🔄 Initializing Gemini 2.0 Flash model...`);
+      console.log(`🔄 Initializing Gemini 2.5 Flash model...`);
       const genAI = getGenAI();
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const prompt = `Analyze this image ${caption ? `and caption: "${caption}"` : ''} and generate relevant hashtags and tags.
       
@@ -433,7 +518,7 @@ export const generateHashtags = async (req, res) => {
       console.log(`✅ Gemini API response received`);
       const responseText = result.response.text();
       let hashtags;
-      
+
       try {
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -453,7 +538,7 @@ export const generateHashtags = async (req, res) => {
       // If Gemini API fails, use mock hashtags
       console.warn(`⚠️ Gemini API failed: ${apiError.message}`);
       console.log(`📌 Using mock hashtags for fallback`);
-      
+
       const mockHashtags = {
         contentType: "general",
         trendingTags: ["#instagood", "#photooftheday", "#instadaily", "#picoftheday", "#instagram", "#insta", "#instalike", "#instamood"],
@@ -461,7 +546,7 @@ export const generateHashtags = async (req, res) => {
         brandTags: ["#sponsoredcontent", "#partner"],
         tags: ["#instagood", "#photooftheday", "#instadaily", "#picoftheday", "#instagram", "#insta", "#instalike", "#instamood", "#instaphotography", "#instamoment"]
       };
-      
+
       return res.json({
         ...mockHashtags,
         mock: true,
@@ -475,7 +560,7 @@ export const generateHashtags = async (req, res) => {
       message: error.message,
       status: error.status,
     });
-    
+
     // Final fallback: return mock hashtags
     const mockHashtags = {
       contentType: "general",
@@ -484,7 +569,7 @@ export const generateHashtags = async (req, res) => {
       brandTags: ["#sponsoredcontent", "#partner"],
       tags: ["#instagood", "#photooftheday", "#instadaily", "#picoftheday", "#instagram", "#insta", "#instalike", "#instamood", "#instaphotography", "#instamoment"]
     };
-    
+
     return res.json({
       ...mockHashtags,
       mock: true,
@@ -513,9 +598,9 @@ export const generateBio = async (req, res) => {
 
     try {
       // Initialize Gemini AI
-      console.log('🔄 Initializing Gemini 2.0 Flash model for bio generation...');
+      console.log('🔄 Initializing Gemini 2.5 Flash model for bio generation...');
       const genAI = getGenAI();
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       // Create a comprehensive prompt
       const prompt = `You are an expert social media bio writer. Create 5 unique and engaging Instagram bio suggestions for this user.
@@ -544,7 +629,7 @@ Return ONLY the 5 bio suggestions, one per line, without numbering or explanatio
 
       console.log('✅ Gemini API response received for bio generation');
       const responseText = result.response.text();
-      
+
       // Parse the response into individual bio suggestions
       const suggestions = responseText
         .split("\n")
@@ -552,17 +637,17 @@ Return ONLY the 5 bio suggestions, one per line, without numbering or explanatio
         .filter((bio) => bio.length > 0 && bio.length <= 150);
 
       console.log(`✨ Generated ${suggestions.length} bio suggestions successfully`);
-      return res.json({ 
+      return res.json({
         suggestions: suggestions.slice(0, 5),
-        success: true 
+        success: true
       });
 
     } catch (apiError) {
       // If Gemini API fails, use mock bios
       console.warn(`⚠️ Gemini API failed for bio generation: ${apiError.message}`);
       console.log(`📌 Using mock bios as fallback`);
-      
-      return res.json({ 
+
+      return res.json({
         suggestions: mockBios,
         mock: true,
         success: true,
@@ -576,11 +661,11 @@ Return ONLY the 5 bio suggestions, one per line, without numbering or explanatio
       message: error.message,
       status: error.status,
     });
-    
+
     // Final fallback: return mock bios
     const displayName = req.body?.displayName || 'User';
     const interests = req.body?.interests || 'various interests';
-    
+
     const mockBios = [
       `${displayName} | Living life one moment at a time ✨ | ${interests} 💫`,
       `✨ ${displayName} | ${interests} 🌟 | Making memories and moments 📸`,
@@ -588,8 +673,8 @@ Return ONLY the 5 bio suggestions, one per line, without numbering or explanatio
       `💫 ${displayName} | Lover of ${interests} ✌️ | Creating my own story 📖`,
       `🌟 ${displayName} | ${interests} 🌍 | Living in the moment ⏰`
     ];
-    
-    return res.json({ 
+
+    return res.json({
       suggestions: mockBios,
       mock: true,
       success: true,
@@ -597,3 +682,86 @@ Return ONLY the 5 bio suggestions, one per line, without numbering or explanatio
     });
   }
 };
+
+// Summarize post content
+export const summarizePost = async (req, res) => {
+  try {
+    const { content } = req.body;
+
+    if (!content) {
+      return res.status(400).json({ error: "Post content is required" });
+    }
+
+    console.log('📝 Summarizing post content...');
+
+    try {
+      const genAI = getGenAI();
+      // Use gemini-2.5-flash as requested
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+      const prompt = `Summarize the following social media post text into a concise, engaging summary (max 2 sentences). Capture the main point and tone.
+
+      Post Text: "${content}"
+      
+      Summary:`;
+
+      const result = await model.generateContent(prompt);
+      const summary = result.response.text().trim();
+
+      console.log('✅ Summary generated successfully');
+      return res.json({ summary });
+
+    } catch (apiError) {
+      console.warn(`⚠️ Gemini API failed: ${apiError.message}`);
+      return res.json({
+        summary: "Unable to generate summary. Please try again later.",
+        error: apiError.message
+      });
+    }
+  } catch (error) {
+    console.error("❌ Summarization Error:", error);
+    return res.status(500).json({ error: "Failed to summarize post" });
+  }
+};
+
+// Generate image (Prompt enhancement with Gemini 2.5 + Mock Generation)
+export const generateImage = async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: "Prompt is required" });
+    }
+
+    console.log('🎨 Generating image for prompt:', prompt);
+
+    try {
+      // Direct generation using Pollinations.ai with the user's raw prompt
+      // as requested: "It should only make what I will give in the prompt."
+
+      const encodedPrompt = encodeURIComponent(prompt);
+      const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true`;
+
+      console.log('📌 Using Pollinations.ai image:', imageUrl);
+
+      return res.json({
+        imageUrl: imageUrl,
+        enhancedPrompt: prompt, // No enhancement, return original
+        mock: true,
+        message: "Image generated via Pollinations.ai"
+      });
+
+    } catch (error) {
+      console.error("❌ AI Generation Error:", error);
+      return res.json({
+        imageUrl: "https://placehold.co/1024x1024?text=Generation+Failed",
+        enhancedPrompt: prompt,
+        error: error.message
+      });
+    }
+  } catch (error) {
+    console.error("❌ Image Generation Error:", error);
+    return res.status(500).json({ error: "Failed to generate image" });
+  }
+};
+
