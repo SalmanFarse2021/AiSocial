@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { useCall } from '@/contexts/CallContext';
 import { X, Phone, PhoneOff, Mic, MicOff, Video, VideoOff, PhoneIncoming } from 'lucide-react';
@@ -70,9 +71,11 @@ export default function CallWindow() {
             <div className="mb-6">
               <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold overflow-hidden">
                 {incomingCall.fromPic ? (
-                  <img
+                  <Image
                     src={incomingCall.fromPic}
                     alt={incomingCall.fromName}
+                    width={96}
+                    height={96}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -128,9 +131,11 @@ export default function CallWindow() {
               <div className="text-center">
                 <div className="w-32 h-32 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-5xl font-bold mb-4">
                   {remoteUser?.profilePic ? (
-                    <img
+                    <Image
                       src={remoteUser.profilePic}
-                      alt={remoteUser.username}
+                      alt={remoteUser.username || 'Remote user avatar'}
+                      width={128}
+                      height={128}
                       className="w-full h-full object-cover rounded-full"
                     />
                   ) : (

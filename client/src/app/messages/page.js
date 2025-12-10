@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Messenger from '@/components/Messenger';
 import Navbar from '@/components/Navbar';
 
-export default function MessagesPage() {
+function MessagesContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
@@ -20,7 +20,7 @@ export default function MessagesPage() {
 
       try {
         const token = localStorage.getItem('token');
-        
+
         // First, get the user by username
         const userResponse = await fetch(
           `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5050'}/api/users/profile/${toUsername}`,
@@ -45,7 +45,7 @@ export default function MessagesPage() {
 
         if (conversationsResponse.ok) {
           const conversationsData = await conversationsResponse.json();
-          const existingConversation = conversationsData.conversations?.find(conv => 
+          const existingConversation = conversationsData.conversations?.find(conv =>
             conv.participants?.some(p => p._id === targetUserId || p === targetUserId)
           );
 
@@ -96,7 +96,7 @@ export default function MessagesPage() {
 
   if (isCreatingConversation) {
     return (
-      <div className="flex w-full h-screen overflow-hidden pt-[60px] md:pt-0">
+      <div className="flex w-full h-screen overflow-hidden pt-[60px] md:pt-0 bg-white dark:bg-slate-950 transition-colors">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -109,11 +109,23 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="flex w-full h-screen overflow-hidden pt-[60px] md:pt-0">
+    <div className="flex w-full h-screen overflow-hidden pt-[60px] md:pt-0 bg-white dark:bg-slate-950 transition-colors">
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <Messenger compact={false} conversationId={conversationId} />
       </div>
     </div>
+  );
+}
+
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex w-full h-screen items-center justify-center">
+        <div className="animate-spin text-4xl">⏳</div>
+      </div>
+    }>
+      <MessagesContent />
+    </Suspense>
   );
 }

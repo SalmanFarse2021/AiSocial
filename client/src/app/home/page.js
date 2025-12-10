@@ -31,13 +31,13 @@ function timeAgo(date) {
 function Avatar({ name, src }) {
   const initials = useMemo(() => (name ? name[0]?.toUpperCase() : 'A'), [name]);
   const [imageError, setImageError] = useState(false);
-
+  
   if (src && !imageError) {
     return (
       <div className="relative h-9 w-9 rounded-full ring-2 ring-gray-100 dark:ring-gray-800 overflow-hidden">
-        <Image
-          src={src}
-          alt={name || 'User'}
+        <Image 
+          src={src} 
+          alt={name || 'User'} 
           fill
           className="object-cover"
           sizes="36px"
@@ -47,7 +47,7 @@ function Avatar({ name, src }) {
       </div>
     );
   }
-
+  
   return (
     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-sky-500 to-fuchsia-500 text-white text-sm font-semibold ring-2 ring-gray-100 dark:ring-gray-800">
       {initials}
@@ -62,7 +62,7 @@ function UserCard() {
       try {
         const { user } = await apiGet('/api/users/me');
         setMe(user);
-      } catch { }
+      } catch {}
     })();
   }, []);
   if (!me) return (
@@ -97,9 +97,6 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedCaption, setEditedCaption] = useState(item.caption || '');
-  const [summary, setSummary] = useState('');
-  const [loadingSummary, setLoadingSummary] = useState(false);
-  const [showSummary, setShowSummary] = useState(false);
 
   async function loadComments() {
     // Toggle comments visibility
@@ -107,13 +104,13 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
       setShowComments(false);
       return;
     }
-
+    
     // Load comments if not already loaded or if we need to refresh
     try {
       const { comments: list } = await apiGet(`/api/posts/${item._id}/comments?limit=5`);
       setComments(list);
       setShowComments(true);
-    } catch { }
+    } catch {}
   }
 
   async function handleComment(e) {
@@ -131,15 +128,15 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
 
       if (comment.didLike) {
         await apiDelete(`/api/posts/${item._id}/comments/${commentId}/like`);
-        setComments(prev => prev.map(c =>
-          c._id === commentId
+        setComments(prev => prev.map(c => 
+          c._id === commentId 
             ? { ...c, didLike: false, likesCount: (c.likesCount || 1) - 1 }
             : c
         ));
       } else {
         await apiPost(`/api/posts/${item._id}/comments/${commentId}/like`, {});
-        setComments(prev => prev.map(c =>
-          c._id === commentId
+        setComments(prev => prev.map(c => 
+          c._id === commentId 
             ? { ...c, didLike: true, likesCount: (c.likesCount || 0) + 1 }
             : c
         ));
@@ -154,20 +151,20 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
     if (!replyText.trim()) return;
 
     try {
-      const { comment: reply } = await apiPost(`/api/posts/${item._id}/comments/${commentId}/reply`, {
-        content: replyText.trim()
+      const { comment: reply } = await apiPost(`/api/posts/${item._id}/comments/${commentId}/reply`, { 
+        content: replyText.trim() 
       });
-
+      
       // Update replies count
-      setComments(prev => prev.map(c =>
-        c._id === commentId
+      setComments(prev => prev.map(c => 
+        c._id === commentId 
           ? { ...c, repliesCount: (c.repliesCount || 0) + 1 }
           : c
       ));
-
+      
       setReplyText('');
       setReplyingTo(null);
-
+      
       // Auto-load replies for this comment
       loadReplies(commentId);
     } catch (error) {
@@ -225,7 +222,7 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
       }
 
       const { post } = await response.json();
-
+      
       // Update the post in the parent component
       if (onUpdate) {
         onUpdate(post);
@@ -235,30 +232,6 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
     } catch (error) {
       console.error('Error updating post:', error);
       alert('Failed to update post. Please try again.');
-    }
-  }
-
-  async function handleSummarize() {
-    if (summary) {
-      setShowSummary(!showSummary);
-      setMenuOpen(false);
-      return;
-    }
-
-    setLoadingSummary(true);
-    setMenuOpen(false);
-    setShowSummary(true);
-
-    try {
-      const { summary: aiSummary } = await apiPost('/api/ai/summarize-post', {
-        content: item.caption
-      });
-      setSummary(aiSummary);
-    } catch (error) {
-      console.error('Error summarizing post:', error);
-      setSummary('Failed to generate summary.');
-    } finally {
-      setLoadingSummary(false);
     }
   }
 
@@ -320,14 +293,6 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
               {!item.canDelete && (
                 <div className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">More options soon</div>
               )}
-              {item.caption && (
-                <button
-                  onClick={handleSummarize}
-                  className="block w-full px-4 py-3 text-left text-sm font-medium text-black dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition border-t border-gray-100 dark:border-gray-700"
-                >
-                  ✨ Summarize
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -365,15 +330,6 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
         item.caption && (
           <div className="px-6 pt-4 pb-3 text-sm text-gray-900 dark:text-gray-100 leading-relaxed">
             {item.caption}
-            {showSummary && (
-              <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-800 dark:text-blue-200">
-                <div className="font-semibold mb-1 flex items-center gap-2">
-                  ✨ AI Summary
-                  {loadingSummary && <span className="animate-pulse">...</span>}
-                </div>
-                {!loadingSummary && summary}
-              </div>
-            )}
           </div>
         )
       )}
@@ -383,9 +339,9 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
         <div className="mx-6 mb-4 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800/50">
           {/* Original Post Header */}
           <div className="flex items-center gap-2 p-3 border-b border-gray-200 dark:border-gray-700">
-            <Avatar
-              name={item.sharedFrom.user?.username || 'U'}
-              src={item.sharedFrom.user?.profilePic}
+            <Avatar 
+              name={item.sharedFrom.user?.username || 'U'} 
+              src={item.sharedFrom.user?.profilePic} 
             />
             <div className="flex-1">
               <div className="text-sm font-semibold text-black dark:text-white">
@@ -397,22 +353,22 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
             </div>
             <Icon name="share" className="h-4 w-4 text-gray-400" />
           </div>
-
+          
           {/* Original Post Caption */}
           {item.sharedFrom.caption && (
             <div className="px-3 pt-2 pb-2 text-sm text-gray-700 dark:text-gray-300 line-clamp-3">
               {item.sharedFrom.caption}
             </div>
           )}
-
+          
           {/* Original Post Media */}
           {item.sharedFrom.media?.[0] && (
             <div className="relative overflow-hidden bg-gray-100 dark:bg-gray-800">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={item.sharedFrom.media[0].url}
-                alt=""
-                className="w-full object-cover max-h-[300px]"
+              <img 
+                src={item.sharedFrom.media[0].url} 
+                alt="" 
+                className="w-full object-cover max-h-[300px]" 
               />
             </div>
           )}
@@ -431,28 +387,30 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
       <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
-            <button
-              aria-label="Like"
+            <button 
+              aria-label="Like" 
               onClick={() => onLike(item)}
-              className={`p-2 rounded-full transition-all transform hover:scale-110 ${item.didLike
-                ? 'text-red-500 dark:text-red-400'
-                : 'text-gray-600 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
+              className={`p-2 rounded-full transition-all transform hover:scale-110 ${
+                item.didLike 
+                  ? 'text-red-500 dark:text-red-400' 
+                  : 'text-gray-600 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
             >
               <Icon name="heart" className="h-5 w-5" filled={item.didLike} />
             </button>
-            <button
-              aria-label="Comment"
+            <button 
+              aria-label="Comment" 
               onClick={loadComments}
-              className={`p-2 rounded-full transition-all transform hover:scale-110 ${showComments
-                ? 'text-blue-500 dark:text-blue-400'
-                : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
+              className={`p-2 rounded-full transition-all transform hover:scale-110 ${
+                showComments 
+                  ? 'text-blue-500 dark:text-blue-400' 
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
             >
               <Icon name="comment" className="h-5 w-5" filled={showComments} />
             </button>
-            <button
-              aria-label="Share"
+            <button 
+              aria-label="Share" 
               onClick={() => setShowShareModal(true)}
               className="p-2 rounded-full text-gray-600 dark:text-gray-400 hover:text-green-500 dark:hover:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
             >
@@ -469,8 +427,8 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
           {(item.likes || 0).toLocaleString()} <span className="font-normal text-gray-600 dark:text-gray-400">likes</span>
         </div>
         {item.commentsCount > 0 && (
-          <button
-            className="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition"
+          <button 
+            className="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition" 
             onClick={loadComments}
           >
             {showComments ? 'Hide comments' : `View all ${item.commentsCount} comments →`}
@@ -481,11 +439,11 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
         {showComments && (
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
             <form onSubmit={handleComment} className="flex items-center gap-2">
-              <input
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Add a comment..."
-                className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-4 py-2 text-sm text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500"
+              <input 
+                value={comment} 
+                onChange={(e) => setComment(e.target.value)} 
+                placeholder="Add a comment..." 
+                className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-4 py-2 text-sm text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500" 
               />
               <button className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-full text-sm transition">
                 Post
@@ -521,10 +479,11 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
                       <div className="flex items-center gap-4 mt-1">
                         <button
                           onClick={() => handleLikeComment(c._id)}
-                          className={`text-xs font-semibold transition ${c.didLike
-                            ? 'text-red-500 dark:text-red-400'
-                            : 'text-gray-500 dark:text-gray-400 hover:text-red-500'
-                            }`}
+                          className={`text-xs font-semibold transition ${
+                            c.didLike 
+                              ? 'text-red-500 dark:text-red-400' 
+                              : 'text-gray-500 dark:text-gray-400 hover:text-red-500'
+                          }`}
                         >
                           {c.didLike ? 'Liked' : 'Like'} {c.likesCount > 0 && `(${c.likesCount})`}
                         </button>
@@ -543,7 +502,7 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
                           </button>
                         )}
                       </div>
-
+                      
                       {/* Reply Form */}
                       {replyingTo === c._id && (
                         <form onSubmit={(e) => handleReply(e, c._id)} className="flex items-center gap-2 mt-2">
@@ -554,7 +513,7 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
                             className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-3 py-1.5 text-xs text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500"
                             autoFocus
                           />
-                          <button
+                          <button 
                             type="submit"
                             className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-full text-xs transition"
                           >
@@ -608,7 +567,7 @@ function Post({ item, onLike, onDelete, onShare, onUpdate }) {
       </div>
 
       {/* Share Modal */}
-      <ShareModal
+      <ShareModal 
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
         post={item}
@@ -656,20 +615,11 @@ export default function HomeFeed() {
   const [captionPopoverPos, setCaptionPopoverPos] = useState({ top: 0, left: 0 });
   const [hashtagPopoverPos, setHashtagPopoverPos] = useState({ top: 0, left: 0 });
 
-  // AI Image Generation State
-  const [imageGenOpen, setImageGenOpen] = useState(false);
-  const [imageGenPrompt, setImageGenPrompt] = useState('');
-  const [imageGenLoading, setImageGenLoading] = useState(false);
-  const [generatedImage, setGeneratedImage] = useState(null);
-  const [enhancedPrompt, setEnhancedPrompt] = useState('');
-  const [modifiedPreviewUrl, setModifiedPreviewUrl] = useState(null);
-  const [isApplying, setIsApplying] = useState(false);
-
   async function loadFeed() {
     try {
       const { posts } = await apiGet('/api/posts/feed?limit=20');
       setFeed(posts);
-    } catch { }
+    } catch {}
   }
 
   async function handleFileSelect(e) {
@@ -703,17 +653,17 @@ export default function HomeFeed() {
       // Step 2: Upload to Cloudinary
       console.log('Starting upload for:', file.name, 'Size:', file.size);
       const uploaded = await uploadImageToCloudinary(file, 'aisocial');
-
+      
       console.log('Upload successful:', uploaded.url);
-
+      
       // Step 3: Set the permanent URL in the hidden input
       if (imageUrlRef.current) {
         imageUrlRef.current.value = uploaded.url;
       }
-
+      
       // Step 4: Update preview to permanent URL
       setPreviewUrl(uploaded.url);
-
+      
       // Show success feedback
       console.log('Image ready for posting or AI tools');
     } catch (err) {
@@ -750,7 +700,7 @@ export default function HomeFeed() {
           const response = await fetch(localPreview);
           const blob = await response.blob();
           const reader = new FileReader();
-
+          
           await new Promise((resolve, reject) => {
             reader.onload = () => {
               imageData = reader.result; // This is base64 data URL
@@ -776,7 +726,7 @@ export default function HomeFeed() {
       if (response.captions && Array.isArray(response.captions)) {
         setAiCaptions(response.captions);
         setAiCaptionOpen(true);
-
+        
         // Position popover ABOVE AI Tools button
         if (aiBtnRef.current) {
           const rect = aiBtnRef.current.getBoundingClientRect();
@@ -793,51 +743,6 @@ export default function HomeFeed() {
       console.error('AI Caption Error:', err);
     } finally {
       setAiCaptionLoading(false);
-    }
-  }
-
-  async function generateAiImage() {
-    if (!imageGenPrompt.trim()) {
-      setError('Please enter a prompt for image generation');
-      return;
-    }
-
-    setImageGenLoading(true);
-    setError('');
-
-    try {
-      const response = await apiPost('/api/ai/generate-image', {
-        prompt: imageGenPrompt
-      });
-
-      if (response.imageUrl) {
-        // Fetch the image to get a blob
-        const imgRes = await fetch(response.imageUrl);
-        const blob = await imgRes.blob();
-
-        // Create a File object
-        const file = new File([blob], `ai-generated-${Date.now()}.png`, { type: 'image/png' });
-
-        // Upload to Cloudinary to make it permanent
-        const uploaded = await uploadImageToCloudinary(file, 'aisocial');
-
-        setGeneratedImage(uploaded.url);
-        setEnhancedPrompt(response.enhancedPrompt);
-
-        // Set as preview for posting
-        setPreviewUrl(uploaded.url);
-        if (imageUrlRef.current) {
-          imageUrlRef.current.value = uploaded.url;
-        }
-        setImageGenOpen(false);
-      } else {
-        setError('Failed to generate image');
-      }
-    } catch (err) {
-      console.error('Image Generation Error:', err);
-      setError(err.message || 'Failed to generate image');
-    } finally {
-      setImageGenLoading(false);
     }
   }
 
@@ -861,7 +766,7 @@ export default function HomeFeed() {
           const response = await fetch(localPreview);
           const blob = await response.blob();
           const reader = new FileReader();
-
+          
           await new Promise((resolve, reject) => {
             reader.onload = () => {
               imageData = reader.result;
@@ -913,7 +818,7 @@ export default function HomeFeed() {
           const response = await fetch(localPreview);
           const blob = await response.blob();
           const reader = new FileReader();
-
+          
           await new Promise((resolve, reject) => {
             reader.onload = () => {
               imageData = reader.result;
@@ -937,7 +842,7 @@ export default function HomeFeed() {
 
       setGeneratedHashtags(response);
       setHashtagsOpen(true);
-
+      
       // Position popover above AI Tools button
       if (aiBtnRef.current) {
         const rect = aiBtnRef.current.getBoundingClientRect();
@@ -962,7 +867,7 @@ export default function HomeFeed() {
       router.push('/login');
       return;
     }
-
+    
     console.log('✅ Token found, loading home page');
     setAuthed(true);
     loadFeed();
@@ -970,7 +875,7 @@ export default function HomeFeed() {
       try {
         const { groups } = await apiGet('/api/stories/feed');
         setStoryGroups(groups);
-      } catch { }
+      } catch {}
     })();
   }, [router]);
   const nextStory = useCallback(() => {
@@ -1040,23 +945,23 @@ export default function HomeFeed() {
     e.preventDefault();
     const caption = (captionRef.current?.value || '').trim();
     const imageUrl = (imageUrlRef.current?.value || '').trim();
-
+    
     // Validate input
     if (!caption && !imageUrl) {
       setError('Please add a caption or upload an image');
       return;
     }
-
+    
     setPosting(true);
     setError('');
-
+    
     try {
       const payload = { caption: caption || undefined };
       if (imageUrl) payload.media = [{ url: imageUrl }];
-
+      
       const { post } = await apiPost('/api/posts', payload);
       setFeed((prev) => [post, ...prev]);
-
+      
       // Clear form
       if (captionRef.current) captionRef.current.value = '';
       if (imageUrlRef.current) imageUrlRef.current.value = '';
@@ -1079,7 +984,7 @@ export default function HomeFeed() {
         const { likes } = await apiPost(`/api/posts/${item._id}/like`);
         setFeed((prev) => prev.map((p) => (p._id === item._id ? { ...p, didLike: true, likes } : p)));
       }
-    } catch { }
+    } catch {}
   }
   async function handleDelete(item) {
     try {
@@ -1108,13 +1013,13 @@ export default function HomeFeed() {
 
   const [suggestions, setSuggestions] = useState([]);
   const [followingIds, setFollowingIds] = useState(new Set());
-
+  
   useEffect(() => {
     (async () => {
       try {
         const { users } = await apiGet('/api/users/suggestions?type=mutual');
         setSuggestions(users.map(u => ({ id: u._id || u.id, name: u.username, profilePic: u.profilePic, mutualCount: u.mutualCount })));
-      } catch { }
+      } catch {}
     })();
   }, []);
 
@@ -1122,9 +1027,9 @@ export default function HomeFeed() {
     try {
       // Add to loading set
       setFollowingIds(prev => new Set([...prev, id]));
-
+      
       await apiPost(`/api/users/${id}/follow`);
-
+      
       // Remove from suggestions with a slight delay for better UX
       setTimeout(() => {
         setSuggestions(prev => prev.filter(s => s.id !== id));
@@ -1162,1100 +1067,855 @@ export default function HomeFeed() {
       <div className="flex">
         {/* Left Navbar */}
         <Navbar />
-
+        
         {/* Main Content */}
         <div className="mx-auto flex max-w-6xl gap-6 px-4 py-6 md:px-6 flex-1 pt-[72px] md:pt-6">
           {/* Feed */}
           <main className="mx-auto w-full max-w-[640px]">
-            {/* Stories */}
-            <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-slate-900 shadow-sm">
-              <div className="flex gap-3 overflow-x-auto p-4 scrollbar-hide">
-                {/* Add story */}
-                <div className="flex flex-col items-center gap-2 flex-shrink-0">
-                  <label className="relative h-20 w-20 cursor-pointer group">
-                    <div className="h-20 w-20 rounded-full border-3 border-blue-500 p-1 group-hover:ring-4 group-hover:ring-blue-200 dark:group-hover:ring-blue-900 transition">
-                      <div className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 text-white text-2xl font-bold hover:shadow-lg transition">
-                        +
-                      </div>
+          {/* Stories */}
+          <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-slate-900 shadow-sm">
+            <div className="flex gap-3 overflow-x-auto p-4 scrollbar-hide">
+              {/* Add story */}
+              <div className="flex flex-col items-center gap-2 flex-shrink-0">
+                <label className="relative h-20 w-20 cursor-pointer group">
+                  <div className="h-20 w-20 rounded-full border-3 border-blue-500 p-1 group-hover:ring-4 group-hover:ring-blue-200 dark:group-hover:ring-blue-900 transition">
+                    <div className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 text-white text-2xl font-bold hover:shadow-lg transition">
+                      +
                     </div>
-                    <input ref={storyFileRef} type="file" accept="image/*" className="absolute inset-0 z-10 opacity-0" onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      setError('');
-                      setUploading(true);
-                      try {
-                        const uploaded = await uploadImageToCloudinary(file, 'aisocial/stories');
-                        await apiPost('/api/stories', { url: uploaded.url, width: uploaded.width, height: uploaded.height, format: uploaded.format, type: 'image' });
-                        const { groups } = await apiGet('/api/stories/feed');
-                        setStoryGroups(groups);
-                      } catch (err) {
-                        setError(err.message || 'Failed to add story');
-                      } finally {
-                        setUploading(false);
-                        if (storyFileRef.current) storyFileRef.current.value = '';
-                      }
-                    }} />
-                  </label>
-                  <div className="w-20 truncate text-xs font-medium leading-tight text-center text-gray-600 dark:text-gray-400">Your story</div>
-                </div>
-
-                {/* Active stories */}
-                {storyGroups.map((g, idx) => (
-                  <button key={g.user._id} onClick={() => openViewer(idx)} className="flex flex-col items-center gap-2 flex-shrink-0 group">
-                    <div className="h-20 w-20 rounded-full border-3 border-pink-500 p-1 group-hover:ring-4 group-hover:ring-pink-200 dark:group-hover:ring-pink-900 overflow-hidden transition">
-                      {g.stories?.[0]?.media?.url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={g.stories[0].media.url} alt="story" className="h-full w-full rounded-full object-cover group-hover:scale-110 transition" />
-                      ) : (
-                        <div className="h-full w-full rounded-full bg-gradient-to-tr from-cyan-500 to-pink-500" />
-                      )}
-                    </div>
-                    <div className="w-20 truncate text-xs font-medium leading-tight text-center text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition">{g.user.username}</div>
-                  </button>
-                ))}
+                  </div>
+                  <input ref={storyFileRef} type="file" accept="image/*" className="absolute inset-0 z-10 opacity-0" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setError('');
+                    setUploading(true);
+                    try {
+                      const uploaded = await uploadImageToCloudinary(file, 'aisocial/stories');
+                      await apiPost('/api/stories', { url: uploaded.url, width: uploaded.width, height: uploaded.height, format: uploaded.format, type: 'image' });
+                      const { groups } = await apiGet('/api/stories/feed');
+                      setStoryGroups(groups);
+                    } catch (err) {
+                      setError(err.message || 'Failed to add story');
+                    } finally {
+                      setUploading(false);
+                      if (storyFileRef.current) storyFileRef.current.value = '';
+                    }
+                  }} />
+                </label>
+                <div className="w-20 truncate text-xs font-medium leading-tight text-center text-gray-600 dark:text-gray-400">Your story</div>
               </div>
+
+              {/* Active stories */}
+              {storyGroups.map((g, idx) => (
+                <button key={g.user._id} onClick={() => openViewer(idx)} className="flex flex-col items-center gap-2 flex-shrink-0 group">
+                  <div className="h-20 w-20 rounded-full border-3 border-pink-500 p-1 group-hover:ring-4 group-hover:ring-pink-200 dark:group-hover:ring-pink-900 overflow-hidden transition">
+                    {g.stories?.[0]?.media?.url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={g.stories[0].media.url} alt="story" className="h-full w-full rounded-full object-cover group-hover:scale-110 transition" />
+                    ) : (
+                      <div className="h-full w-full rounded-full bg-gradient-to-tr from-cyan-500 to-pink-500" />
+                    )}
+                  </div>
+                  <div className="w-20 truncate text-xs font-medium leading-tight text-center text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition">{g.user.username}</div>
+                </button>
+              ))}
             </div>
-            {/* Story viewer modal */}
-            {viewerOpen && (() => {
-              const group = storyGroups[viewerGroupIndex];
-              const story = group?.stories?.[viewerStoryIndex];
-              const mediaUrl = story?.media?.url;
-              return (
-                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4">
-                  <div className="relative w-full max-w-2xl">
-                    <div className="mb-2 flex items-center justify-between text-white">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 overflow-hidden rounded-full bg-white/20">
-                          {group?.user?.profilePic && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={group.user.profilePic} alt="" className="h-full w-full object-cover" />
-                          )}
-                        </div>
-                        <div className="text-sm font-semibold">{group?.user?.username}</div>
+          </div>
+          {/* Story viewer modal */}
+          {viewerOpen && (() => {
+            const group = storyGroups[viewerGroupIndex];
+            const story = group?.stories?.[viewerStoryIndex];
+            const mediaUrl = story?.media?.url;
+            return (
+              <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4">
+                <div className="relative w-full max-w-2xl">
+                  <div className="mb-2 flex items-center justify-between text-white">
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 overflow-hidden rounded-full bg-white/20">
+                        {group?.user?.profilePic && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={group.user.profilePic} alt="" className="h-full w-full object-cover" />
+                        )}
                       </div>
-                      <button onClick={() => setViewerOpen(false)} className="rounded px-2 py-1 text-sm text-white/80 hover:text-white">Close</button>
+                      <div className="text-sm font-semibold">{group?.user?.username}</div>
                     </div>
-                    <div className="relative overflow-hidden rounded-md bg-black">
-                      {mediaUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={mediaUrl} alt="story" className="mx-auto max-h-[70vh] w-auto" />
-                      )}
-                      <button onClick={prevStory} className="absolute left-2 top-1/2 -translate-y-1/2 rounded bg-white/10 px-3 py-2 text-white hover:bg-white/20">‹</button>
-                      <button onClick={nextStory} className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-white/10 px-3 py-2 text-white hover:bg-white/20">›</button>
-                    </div>
-                    {/* Reactions bar */}
-                    <div className="mt-3 flex items-center justify-between">
-                      <div className="flex gap-2">
-                        {['❤️', '😂', '🔥', '👍', '👏', '😮', '😢', '😡'].map((emo) => (
-                          <button
-                            key={emo}
-                            onClick={async () => {
-                              try {
-                                await apiPost(`/api/stories/${story._id}/react`, { type: emo });
-                                // update current story myReaction locally
-                                setStoryGroups((prev) => {
-                                  const clone = [...prev];
-                                  const g = clone[viewerGroupIndex];
-                                  if (g && g.stories[viewerStoryIndex]) {
-                                    g.stories[viewerStoryIndex].myReaction = emo;
-                                  }
-                                  return clone;
-                                });
-                              } catch (e) { }
-                            }}
-                            className={`rounded px-2 py-1 text-xl ${story?.myReaction === emo ? 'ring-2 ring-white/60' : ''}`}
-                          >
-                            {emo}
-                          </button>
-                        ))}
-                      </div>
-                      {story?.myReaction ? (
+                    <button onClick={() => setViewerOpen(false)} className="rounded px-2 py-1 text-sm text-white/80 hover:text-white">Close</button>
+                  </div>
+                  <div className="relative overflow-hidden rounded-md bg-black">
+                    {mediaUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={mediaUrl} alt="story" className="mx-auto max-h-[70vh] w-auto" />
+                    )}
+                    <button onClick={prevStory} className="absolute left-2 top-1/2 -translate-y-1/2 rounded bg-white/10 px-3 py-2 text-white hover:bg-white/20">‹</button>
+                    <button onClick={nextStory} className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-white/10 px-3 py-2 text-white hover:bg-white/20">›</button>
+                  </div>
+                  {/* Reactions bar */}
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex gap-2">
+                      {['❤️','😂','🔥','👍','👏','😮','😢','😡'].map((emo) => (
                         <button
+                          key={emo}
                           onClick={async () => {
                             try {
-                              await fetch(`${API_BASE}/api/stories/${story._id}/react`, { method: 'DELETE', headers: { ...authHeaders() } });
+                              await apiPost(`/api/stories/${story._id}/react`, { type: emo });
+                              // update current story myReaction locally
                               setStoryGroups((prev) => {
                                 const clone = [...prev];
                                 const g = clone[viewerGroupIndex];
                                 if (g && g.stories[viewerStoryIndex]) {
-                                  g.stories[viewerStoryIndex].myReaction = null;
+                                  g.stories[viewerStoryIndex].myReaction = emo;
                                 }
                                 return clone;
                               });
-                            } catch (e) { }
+                            } catch (e) {}
                           }}
-                          className="rounded px-3 py-1 text-sm text-white/80 hover:text-white"
+                          className={`rounded px-2 py-1 text-xl ${story?.myReaction === emo ? 'ring-2 ring-white/60' : ''}`}
                         >
-                          Remove reaction
+                          {emo}
                         </button>
-                      ) : <div />}
-                    </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      {(group?.stories || []).map((s, i) => (
-                        <div key={s._id} className={`h-1 flex-1 rounded ${i <= viewerStoryIndex ? 'bg-white' : 'bg-white/30'}`} />
                       ))}
                     </div>
-                  </div>
-                </div>
-              );
-            })()}
-            {/* Composer */}
-            <form onSubmit={submitPost} className="mb-6 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-slate-900 shadow-sm">
-              <div className="px-6 py-5">
-                <textarea
-                  ref={captionRef}
-                  placeholder="What's on your mind?"
-                  rows={3}
-                  className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
-
-                {previewUrl && (
-                  <div className="mt-4 relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-                    <Image
-                      src={previewUrl}
-                      alt="preview"
-                      width={400}
-                      height={256}
-                      className="w-full object-cover max-h-64"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setPreviewUrl('')}
-                      className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-1.5 transition"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="mt-4 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm font-medium text-red-600 dark:text-red-400">
-                    ⚠️ {error}
-                  </div>
-                )}
-
-                {/* Three Button Layout */}
-                <div className="mt-5 grid grid-cols-3 gap-3 border-t border-gray-100 dark:border-gray-800 pt-5 relative">
-                  {/* Left: Upload Dropdown */}
-                  <div className="relative composer-dropdown">
-                    <button
-                      type="button"
-                      ref={uploadBtnRef}
-                      onClick={() => {
-                        setUploadMenuOpen(!uploadMenuOpen);
-                        if (uploadBtnRef.current) {
-                          const rect = uploadBtnRef.current.getBoundingClientRect();
-                          setUploadPos({ top: rect.bottom + window.scrollY + 8, left: rect.left + window.scrollX });
-                        }
-                      }}
-                      disabled={uploading}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 transition-all hover:border-blue-400 dark:hover:border-blue-400 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      📎 {uploading ? 'Uploading...' : 'Upload'}
-                    </button>
-                  </div>
-
-                  {/* Middle: AI Features Dropdown */}
-                  <div className="relative composer-dropdown">
-                    <button
-                      type="button"
-                      ref={aiBtnRef}
-                      onClick={() => {
-                        setAiMenuOpen(!aiMenuOpen);
-                        if (aiBtnRef.current) {
-                          const rect = aiBtnRef.current.getBoundingClientRect();
-                          setAiPos({ top: rect.bottom + window.scrollY + 8, left: rect.left + window.scrollX });
-                        }
-                      }}
-                      disabled={aiCaptionLoading || analyzeLoading || hashtagsLoading || modifyPromptLoading}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 px-4 py-3 font-semibold text-purple-700 dark:text-purple-300 transition-all hover:border-purple-400 dark:hover:border-purple-400 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {aiCaptionLoading || analyzeLoading || hashtagsLoading || modifyPromptLoading ? '⏳ Generating...' : '✨ AI Tools'}
-                    </button>
-                  </div>
-
-                  {/* Right: Post Button */}
-                  <button
-                    disabled={posting || !authed || uploading}
-                    className="rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-400 px-6 py-3 font-bold text-white transition-all transform hover:scale-105 disabled:opacity-70 disabled:scale-100 flex items-center justify-center gap-2"
-                  >
-                    {posting ? '⏳ Posting…' : authed ? '✨ Post' : '🔐 Login'}
-                  </button>
-                </div>
-
-                {/* Hidden file input for image upload */}
-                <input ref={imageUrlRef} type="hidden" />
-              </div>
-            </form>
-
-            {/* Upload Menu Portal */}
-            {uploadMenuOpen && (
-              <div
-                className="absolute bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl z-50 w-48 max-h-60 overflow-y-auto"
-                style={{ top: `${uploadPos.top}px`, left: `${uploadPos.left}px` }}
-              >
-                <button
-                  type="button"
-                  disabled={uploading}
-                  onClick={async () => {
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = 'image/*';
-                    input.onchange = async (e) => {
-                      await handleFileSelect({ target: { files: [input.files[0]] } });
-                      setUploadMenuOpen(false);
-                    };
-                    input.click();
-                  }}
-                  className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {uploading ? '⏳ Uploading...' : '🖼️ Upload Image'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    alert('Video upload coming soon!');
-                    setUploadMenuOpen(false);
-                  }}
-                  className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 transition border-t border-gray-100 dark:border-gray-700"
-                >
-                  🎥 Upload Video
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const link = prompt('Enter link URL:');
-                    if (link && imageUrlRef.current) {
-                      imageUrlRef.current.value = link;
-                    }
-                    setUploadMenuOpen(false);
-                  }}
-                  className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 transition border-t border-gray-100 dark:border-gray-700"
-                >
-                  🔗 Add Link
-                </button>
-              </div>
-            )}
-
-            {/* AI Image Generation Modal */}
-            {imageGenOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        🎨 AI Image Generator
-                      </h3>
+                    {story?.myReaction ? (
                       <button
-                        onClick={() => setImageGenOpen(false)}
-                        className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        onClick={async () => {
+                          try {
+                            await fetch(`${API_BASE}/api/stories/${story._id}/react`, { method: 'DELETE', headers: { ...authHeaders() } });
+                            setStoryGroups((prev) => {
+                              const clone = [...prev];
+                              const g = clone[viewerGroupIndex];
+                              if (g && g.stories[viewerStoryIndex]) {
+                                g.stories[viewerStoryIndex].myReaction = null;
+                              }
+                              return clone;
+                            });
+                          } catch (e) {}
+                        }}
+                        className="rounded px-3 py-1 text-sm text-white/80 hover:text-white"
                       >
-                        ✕
+                        Remove reaction
                       </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Describe the image you want
-                        </label>
-                        <textarea
-                          value={imageGenPrompt}
-                          onChange={(e) => setImageGenPrompt(e.target.value)}
-                          placeholder="A futuristic city with flying cars at sunset..."
-                          rows={3}
-                          className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none resize-none"
-                        />
-                      </div>
-
-                      <button
-                        onClick={generateAiImage}
-                        disabled={imageGenLoading || !imageGenPrompt.trim()}
-                        className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold rounded-xl transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {imageGenLoading ? '✨ Generating...' : '✨ Generate Image'}
-                      </button>
-
-                      {enhancedPrompt && (
-                        <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-100 dark:border-purple-800">
-                          <div className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">
-                            Gemini 2.5 Enhanced Prompt:
-                          </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-400 italic">
-                            "{enhancedPrompt}"
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    ) : <div />}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    {(group?.stories || []).map((s, i) => (
+                      <div key={s._id} className={`h-1 flex-1 rounded ${i <= viewerStoryIndex ? 'bg-white' : 'bg-white/30'}`} />
+                    ))}
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* AI Tools Menu Portal */}
-            {aiMenuOpen && (
-              <div
-                className="absolute bg-white dark:bg-slate-800 rounded-xl border border-purple-200 dark:border-purple-700 shadow-2xl z-50 w-56 max-h-80 overflow-y-auto"
-                style={{ top: `${aiPos.top}px`, left: `${aiPos.left}px` }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    generateAiCaption();
-                    setAiMenuOpen(false);
-                  }}
-                  disabled={aiCaptionLoading}
-                  className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {aiCaptionLoading ? '⏳ Generating...' : '📝 AI Caption Generator'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    generateHashtagsForImage();
-                    setAiMenuOpen(false);
-                  }}
-                  disabled={hashtagsLoading}
-                  className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {hashtagsLoading ? '⏳ Generating...' : '#️⃣ Generate Hashtags'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setModifyPromptOpen(true);
-                    setAiMenuOpen(false);
-                  }}
-                  className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700"
-                >
-                  🖌️ Modify with Prompt
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAiMenuOpen(false);
-                    setImageGenOpen(true);
-                  }}
-                  className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700"
-                >
-                  🎨 Generate with AI
-                </button>
-              </div>
-            )}
-
-            {/* AI Caption Generator Popover */}
-            {aiCaptionOpen && (
-              <div
-                className="absolute bg-white dark:bg-slate-800 rounded-xl border border-purple-200 dark:border-purple-700 shadow-2xl z-50 w-96 max-h-96 overflow-hidden"
-                style={{
-                  top: `${captionPopoverPos.top}px`,
-                  left: `${captionPopoverPos.left}px`,
-                  maxWidth: 'calc(100vw - 20px)'
-                }}
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-purple-200 dark:border-purple-700 px-5 py-3 bg-purple-50 dark:bg-purple-900/20">
-                  <h3 className="font-semibold text-sm text-gray-900 dark:text-white">📝 AI Captions</h3>
+            );
+          })()}
+          {/* Composer */}
+          <form onSubmit={submitPost} className="mb-6 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-slate-900 shadow-sm">
+            <div className="px-6 py-5">
+              <textarea 
+                ref={captionRef} 
+                placeholder="What's on your mind?" 
+                rows={3} 
+                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 resize-none" 
+              />
+              
+              {previewUrl && (
+                <div className="mt-4 relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+                  <Image 
+                    src={previewUrl} 
+                    alt="preview" 
+                    width={400}
+                    height={256}
+                    className="w-full object-cover max-h-64" 
+                  />
                   <button
-                    onClick={() => setAiCaptionOpen(false)}
-                    className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-lg leading-none"
+                    type="button"
+                    onClick={() => setPreviewUrl('')}
+                    className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-1.5 transition"
                   >
                     ✕
                   </button>
                 </div>
+              )}
 
-                {/* Mood Selector */}
-                <div className="border-b border-gray-200 dark:border-gray-700 px-5 py-3">
-                  <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Change mood:</div>
-                  <div className="flex gap-2 flex-wrap">
-                    {['default', 'funny', 'professional', 'casual', 'poetic'].map((mood) => (
-                      <button
-                        key={mood}
-                        onClick={() => generateAiCaption(mood)}
-                        disabled={aiCaptionLoading}
-                        className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${captionMood === mood
+              {error && (
+                <div className="mt-4 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm font-medium text-red-600 dark:text-red-400">
+                  ⚠️ {error}
+                </div>
+              )}
+              
+              {/* Three Button Layout */}
+              <div className="mt-5 grid grid-cols-3 gap-3 border-t border-gray-100 dark:border-gray-800 pt-5 relative">
+                {/* Left: Upload Dropdown */}
+                <div className="relative composer-dropdown">
+                  <button
+                    type="button"
+                    ref={uploadBtnRef}
+                    onClick={() => {
+                      setUploadMenuOpen(!uploadMenuOpen);
+                      if (uploadBtnRef.current) {
+                        const rect = uploadBtnRef.current.getBoundingClientRect();
+                        setUploadPos({ top: rect.bottom + window.scrollY + 8, left: rect.left + window.scrollX });
+                      }
+                    }}
+                    disabled={uploading}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 transition-all hover:border-blue-400 dark:hover:border-blue-400 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    📎 {uploading ? 'Uploading...' : 'Upload'}
+                  </button>
+                </div>
+
+                {/* Middle: AI Features Dropdown */}
+                <div className="relative composer-dropdown">
+                  <button
+                    type="button"
+                    ref={aiBtnRef}
+                    onClick={() => {
+                      setAiMenuOpen(!aiMenuOpen);
+                      if (aiBtnRef.current) {
+                        const rect = aiBtnRef.current.getBoundingClientRect();
+                        setAiPos({ top: rect.bottom + window.scrollY + 8, left: rect.left + window.scrollX });
+                      }
+                    }}
+                    disabled={aiCaptionLoading || analyzeLoading || hashtagsLoading || modifyPromptLoading}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 px-4 py-3 font-semibold text-purple-700 dark:text-purple-300 transition-all hover:border-purple-400 dark:hover:border-purple-400 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {aiCaptionLoading || analyzeLoading || hashtagsLoading || modifyPromptLoading ? '⏳ Generating...' : '✨ AI Tools'}
+                  </button>
+                </div>
+
+                {/* Right: Post Button */}
+                <button 
+                  disabled={posting || !authed || uploading} 
+                  className="rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-400 px-6 py-3 font-bold text-white transition-all transform hover:scale-105 disabled:opacity-70 disabled:scale-100 flex items-center justify-center gap-2"
+                >
+                  {posting ? '⏳ Posting…' : authed ? '✨ Post' : '🔐 Login'}
+                </button>
+              </div>
+
+              {/* Hidden file input for image upload */}
+              <input ref={imageUrlRef} type="hidden" />
+            </div>
+          </form>
+
+          {/* Upload Menu Portal */}
+          {uploadMenuOpen && (
+            <div 
+              className="absolute bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl z-50 w-48 max-h-60 overflow-y-auto"
+              style={{ top: `${uploadPos.top}px`, left: `${uploadPos.left}px` }}
+            >
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={async () => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = 'image/*';
+                  input.onchange = async (e) => {
+                    await handleFileSelect({ target: { files: [input.files[0]] } });
+                    setUploadMenuOpen(false);
+                  };
+                  input.click();
+                }}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? '⏳ Uploading...' : '🖼️ Upload Image'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  alert('Video upload coming soon!');
+                  setUploadMenuOpen(false);
+                }}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 transition border-t border-gray-100 dark:border-gray-700"
+              >
+                🎥 Upload Video
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const link = prompt('Enter link URL:');
+                  if (link && imageUrlRef.current) {
+                    imageUrlRef.current.value = link;
+                  }
+                  setUploadMenuOpen(false);
+                }}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-blue-50 dark:hover:bg-blue-900/20 transition border-t border-gray-100 dark:border-gray-700"
+              >
+                🔗 Add Link
+              </button>
+            </div>
+          )}
+
+          {/* AI Tools Menu Portal */}
+          {aiMenuOpen && (
+            <div 
+              className="absolute bg-white dark:bg-slate-800 rounded-xl border border-purple-200 dark:border-purple-700 shadow-2xl z-50 w-56 max-h-80 overflow-y-auto"
+              style={{ top: `${aiPos.top}px`, left: `${aiPos.left}px` }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  generateAiCaption();
+                  setAiMenuOpen(false);
+                }}
+                disabled={aiCaptionLoading}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {aiCaptionLoading ? '⏳ Generating...' : '📝 AI Caption Generator'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  analyzeImageQuality();
+                  setAiMenuOpen(false);
+                }}
+                disabled={analyzeLoading}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {analyzeLoading ? '⏳ Analyzing...' : '🎨 Enhance Image Quality'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  generateHashtagsForImage();
+                  setAiMenuOpen(false);
+                }}
+                disabled={hashtagsLoading}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {hashtagsLoading ? '⏳ Generating...' : '#️⃣ Generate Hashtags'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModifyPromptOpen(true);
+                  setAiMenuOpen(false);
+                }}
+                className="block w-full px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border-t border-gray-100 dark:border-gray-700"
+              >
+                🖌️ Modify with Prompt
+              </button>
+            </div>
+          )}
+
+          {/* AI Caption Generator Popover */}
+          {aiCaptionOpen && (
+            <div 
+              className="absolute bg-white dark:bg-slate-800 rounded-xl border border-purple-200 dark:border-purple-700 shadow-2xl z-50 w-96 max-h-96 overflow-hidden"
+              style={{ 
+                top: `${captionPopoverPos.top}px`, 
+                left: `${captionPopoverPos.left}px`,
+                maxWidth: 'calc(100vw - 20px)'
+              }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-purple-200 dark:border-purple-700 px-5 py-3 bg-purple-50 dark:bg-purple-900/20">
+                <h3 className="font-semibold text-sm text-gray-900 dark:text-white">📝 AI Captions</h3>
+                <button
+                  onClick={() => setAiCaptionOpen(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-lg leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Mood Selector */}
+              <div className="border-b border-gray-200 dark:border-gray-700 px-5 py-3">
+                <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Change mood:</div>
+                <div className="flex gap-2 flex-wrap">
+                  {['default', 'funny', 'professional', 'casual', 'poetic'].map((mood) => (
+                    <button
+                      key={mood}
+                      onClick={() => generateAiCaption(mood)}
+                      disabled={aiCaptionLoading}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                        captionMood === mood
                           ? 'bg-purple-500 text-white'
                           : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                          } disabled:opacity-50 disabled:cursor-not-allowed`}
-                      >
-                        {mood === 'default' ? '✨ Default' : mood}
-                      </button>
-                    ))}
-                  </div>
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {mood === 'default' ? '✨ Default' : mood}
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                {/* Captions List */}
-                <div className="px-5 py-3 max-h-64 overflow-y-auto space-y-2">
-                  {aiCaptions.length > 0 ? (
-                    aiCaptions.map((caption, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-500 transition-all group"
-                      >
-                        <p className="text-sm text-gray-900 dark:text-white mb-2 line-clamp-3">{caption}</p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              if (captionRef.current) {
-                                captionRef.current.value = caption;
-                                setAiCaptionOpen(false);
-                              }
-                            }}
-                            className="flex-1 px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-all"
-                          >
-                            ➕ Use
-                          </button>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(caption);
-                            }}
-                            className="flex-1 px-3 py-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-900 dark:text-white text-xs font-medium rounded-lg transition-all"
-                          >
-                            📋 Copy
-                          </button>
-                        </div>
+              {/* Captions List */}
+              <div className="px-5 py-3 max-h-64 overflow-y-auto space-y-2">
+                {aiCaptions.length > 0 ? (
+                  aiCaptions.map((caption, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-500 transition-all group"
+                    >
+                      <p className="text-sm text-gray-900 dark:text-white mb-2 line-clamp-3">{caption}</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            if (captionRef.current) {
+                              captionRef.current.value = caption;
+                              setAiCaptionOpen(false);
+                            }
+                          }}
+                          className="flex-1 px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-all"
+                        >
+                          ➕ Use
+                        </button>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(caption);
+                          }}
+                          className="flex-1 px-3 py-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-900 dark:text-white text-xs font-medium rounded-lg transition-all"
+                        >
+                          📋 Copy
+                        </button>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-4">
-                      <div className="text-sm text-gray-500 dark:text-gray-400">No captions generated</div>
                     </div>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div className="border-t border-gray-200 dark:border-gray-700 px-5 py-2 bg-gray-50 dark:bg-gray-900/20 flex gap-2">
-                  <button
-                    onClick={() => setAiCaptionOpen(false)}
-                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                  >
-                    Close
-                  </button>
-                  <button
-                    onClick={() => generateAiCaption(captionMood)}
-                    disabled={aiCaptionLoading}
-                    className="flex-1 px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {aiCaptionLoading ? '⏳ Generating...' : '🔄 Regenerate'}
-                  </button>
-                </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">No captions generated</div>
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Backdrop to close popover when clicking outside */}
-            {aiCaptionOpen && (
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setAiCaptionOpen(false)}
-              />
-            )}
-
-            {/* Modify with Prompt Modal */}
-            {modifyPromptOpen && (
-              <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-                <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
-                  {/* Header */}
-                  <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 px-6 py-4">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">🖌️ Modify Image with Prompt</h2>
-                    <button
-                      onClick={() => setModifyPromptOpen(false)}
-                      className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl leading-none"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  {/* Content */}
-                  <div className="px-6 py-6">
-                    <div className="space-y-4">
-                      {/* Quick Prompt Options */}
-                      <div>
-                        <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Quick Options:</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => setModifyPrompt('Make the colors more vibrant and saturated')}
-                            className="px-3 py-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
-                          >
-                            🎨 Vibrant Colors
-                          </button>
-                          <button
-                            onClick={() => setModifyPrompt('Increase contrast and sharpness')}
-                            className="px-3 py-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
-                          >
-                            ✨ Sharp & Clear
-                          </button>
-                          <button
-                            onClick={() => setModifyPrompt('Add vintage film effect')}
-                            className="px-3 py-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
-                          >
-                            📽️ Vintage Look
-                          </button>
-                          <button
-                            onClick={() => {
-                              analyzeImageQuality();
-                              setModifyPromptOpen(false);
-                            }}
-                            disabled={analyzeLoading}
-                            className="px-3 py-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition flex items-center justify-center gap-1"
-                          >
-                            {analyzeLoading ? '⏳ Analyzing...' : '🚀 Auto Enhance Quality'}
-                          </button>
-                          <button
-                            onClick={() => setModifyPrompt('Blur background and focus on subject')}
-                            className="px-3 py-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
-                          >
-                            🎯 Blur Background
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Custom Prompt Input or Review */}
-                      {!modifiedPreviewUrl ? (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                            📝 Custom Prompt
-                          </label>
-                          <textarea
-                            value={modifyPrompt}
-                            onChange={(e) => setModifyPrompt(e.target.value)}
-                            placeholder="Describe how you want to modify your image... (e.g., 'Make it look like an oil painting' or 'Add sunset colors')"
-                            className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
-                            rows={4}
-                          />
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                            Be specific about the style, colors, or effects you want
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center space-y-4">
-                          <div className="relative w-full aspect-square max-h-[300px] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={modifiedPreviewUrl}
-                              alt="Modified Preview"
-                              className="w-full h-full object-contain"
-                              referrerPolicy="no-referrer"
-                              onLoad={() => {
-                                console.log('✅ Image loaded in preview');
-                                setModifyPromptLoading(false);
-                              }}
-                              onError={(e) => {
-                                console.error('Image load error:', e);
-                                e.target.style.display = 'none';
-                                setModifyPromptLoading(false);
-                                alert('Failed to load image preview. The URL might be invalid.');
-                              }}
-                            />
-                          </div>
-                          <div className="flex gap-2 w-full">
-                            <button
-                              onClick={() => setModifiedPreviewUrl(null)}
-                              className="flex-1 px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center justify-center gap-2"
-                            >
-                              ✏️ Edit Prompt
-                            </button>
-                            <button
-                              onClick={async () => {
-                                setModifyPromptLoading(true);
-                                try {
-                                  const currentImage = imageUrlRef.current?.value || previewUrl;
-                                  console.log('🔄 Regenerating with prompt:', modifyPrompt);
-
-                                  let imageToSend = currentImage;
-                                  if (currentImage.startsWith('blob:')) {
-                                    console.log('🔄 Processing blob image...');
-                                    const blobRes = await fetch(currentImage);
-                                    const blob = await blobRes.blob();
-
-                                    // Resize image to max 1024px
-                                    imageToSend = await new Promise((resolve) => {
-                                      const img = document.createElement('img');
-                                      img.onload = () => {
-                                        const canvas = document.createElement('canvas');
-                                        let width = img.width;
-                                        let height = img.height;
-                                        const maxSize = 1024;
-
-                                        if (width > maxSize || height > maxSize) {
-                                          if (width > height) {
-                                            height = Math.round((height * maxSize) / width);
-                                            width = maxSize;
-                                          } else {
-                                            width = Math.round((width * maxSize) / height);
-                                            height = maxSize;
-                                          }
-                                        }
-
-                                        canvas.width = width;
-                                        canvas.height = height;
-                                        const ctx = canvas.getContext('2d');
-                                        ctx.drawImage(img, 0, 0, width, height);
-                                        resolve(canvas.toDataURL('image/jpeg', 0.8));
-                                      };
-                                      img.src = URL.createObjectURL(blob);
-                                    });
-                                  }
-
-                                  const response = await apiPost('/api/ai/modify-image', {
-                                    imageUrl: imageToSend,
-                                    userPrompt: modifyPrompt
-                                  });
-                                  console.log('✅ Regeneration response:', response);
-                                  if (response.imageUrl) {
-                                    setModifiedPreviewUrl(response.imageUrl);
-                                    // Don't set loading false here, wait for image onLoad
-                                  } else {
-                                    setModifyPromptLoading(false);
-                                  }
-                                } catch (err) {
-                                  console.error('Regeneration failed:', err);
-                                  const errorMessage = err.message + (err.details ? `\nDetails: ${err.details}` : '');
-                                  alert('Regeneration failed: ' + errorMessage);
-                                  setModifyPromptLoading(false);
-                                }
-                              }}
-                              className="flex-1 px-4 py-2 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium hover:bg-purple-200 dark:hover:bg-purple-900/50 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                              disabled={modifyPromptLoading}
-                            >
-                              🔄 Regenerate
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="border-t border-gray-200 dark:border-gray-800 px-6 py-4 bg-gray-50 dark:bg-slate-800 flex gap-3">
-                    <button
-                      onClick={() => {
-                        setModifyPromptOpen(false);
-                        setModifyPrompt('');
-                        setModifiedPreviewUrl(null);
-                      }}
-                      className="flex-1 px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={async () => {
-                        if (modifiedPreviewUrl) {
-                          // APPLY CHANGES
-                          setIsApplying(true);
-                          setModifyPromptLoading(true);
-                          try {
-                            // Fetch the new image to get a blob
-                            const imgRes = await fetch(modifiedPreviewUrl);
-                            const blob = await imgRes.blob();
-
-                            // Create a File object
-                            const file = new File([blob], `ai-modified-${Date.now()}.png`, { type: 'image/png' });
-
-                            // Upload to Cloudinary to make it permanent
-                            const uploaded = await uploadImageToCloudinary(file, 'aisocial');
-
-                            // Update preview and hidden input
-                            setPreviewUrl(uploaded.url);
-                            if (imageUrlRef.current) {
-                              imageUrlRef.current.value = uploaded.url;
-                            }
-
-                            setModifyPromptOpen(false);
-                            setModifyPrompt('');
-                            setModifiedPreviewUrl(null);
-                          } catch (err) {
-                            console.error('Apply Error:', err);
-                            alert('Failed to apply changes: ' + err.message);
-                          } finally {
-                            setModifyPromptLoading(false);
-                            setIsApplying(false);
-                          }
-                        } else if (modifyPrompt.trim()) {
-                          // GENERATE PREVIEW
-                          setModifyPromptLoading(true);
-                          try {
-                            const currentImage = imageUrlRef.current?.value || previewUrl;
-                            if (!currentImage) {
-                              alert('Please upload an image first');
-                              setModifyPromptLoading(false);
-                              return;
-                            }
-
-                            console.log('🎨 Generating preview with prompt:', modifyPrompt);
-
-                            let imageToSend = currentImage;
-
-                            // If it's a blob URL (local preview), convert to base64 and resize
-                            // If it's a blob URL (local preview), upload to Cloudinary first to get a public URL
-                            // This is required for Pollinations img2img to work (needs a public URL, not base64)
-                            if (currentImage.startsWith('blob:')) {
-                              console.log('☁️ Uploading local image to Cloudinary for AI processing...');
-                              const blobRes = await fetch(currentImage);
-                              const blob = await blobRes.blob();
-                              const file = new File([blob], `ai-source-${Date.now()}.png`, { type: 'image/png' });
-
-                              const uploaded = await uploadImageToCloudinary(file, 'aisocial');
-                              imageToSend = uploaded.url;
-
-                              // Update local state so we don't re-upload
-                              setPreviewUrl(uploaded.url);
-                              if (imageUrlRef.current) {
-                                imageUrlRef.current.value = uploaded.url;
-                              }
-                              console.log('✅ Image uploaded to:', imageToSend);
-                            }
-
-                            const response = await apiPost('/api/ai/modify-image', {
-                              imageUrl: imageToSend,
-                              userPrompt: modifyPrompt
-                            });
-                            console.log('✅ Preview response:', response);
-
-                            if (response.imageUrl) {
-                              setModifiedPreviewUrl(response.imageUrl);
-                              // Don't set loading false here, wait for image onLoad
-                            } else {
-                              setModifyPromptLoading(false);
-                            }
-                          } catch (err) {
-                            console.error('Modification Error:', err);
-                            const errorMessage = err.message + (err.details ? `\nDetails: ${err.details}` : '');
-                            alert('Failed to modify image: ' + errorMessage);
-                            setModifyPromptLoading(false);
-                          }
-                        } else {
-                          alert('Please enter a prompt first');
-                        }
-                      }}
-                      disabled={modifyPromptLoading || (!modifyPrompt.trim() && !modifiedPreviewUrl)}
-                      className="flex-1 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {modifyPromptLoading
-                        ? (isApplying
-                          ? '⏳ Applying...'
-                          : (modifiedPreviewUrl ? '⏳ Regenerating...' : '⏳ Generating...'))
-                        : (modifiedPreviewUrl ? '✅ Apply Changes' : '✨ Generate Preview')}
-                    </button>
-                  </div>
-                </div>
+              {/* Footer */}
+              <div className="border-t border-gray-200 dark:border-gray-700 px-5 py-2 bg-gray-50 dark:bg-gray-900/20 flex gap-2">
+                <button
+                  onClick={() => setAiCaptionOpen(false)}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => generateAiCaption(captionMood)}
+                  disabled={aiCaptionLoading}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {aiCaptionLoading ? '⏳ Generating...' : '🔄 Regenerate'}
+                </button>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Image Analysis Modal */}
-            {analyzeOpen && (
-              <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-                <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
-                  {/* Header */}
-                  <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 px-6 py-4">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">🎨 Image Analysis & Suggestions</h2>
-                    <button
-                      onClick={() => setAnalyzeOpen(false)}
-                      className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl leading-none"
-                    >
-                      ✕
-                    </button>
-                  </div>
+          {/* Backdrop to close popover when clicking outside */}
+          {aiCaptionOpen && (
+            <div 
+              className="fixed inset-0 z-40"
+              onClick={() => setAiCaptionOpen(false)}
+            />
+          )}
 
-                  {/* Content */}
-                  <div className="px-6 py-4 max-h-96 overflow-y-auto space-y-4">
-                    {imageAnalysis ? (
-                      <>
-                        {imageAnalysis.qualityScore && (
-                          <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700">
-                            <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Quality Score</div>
-                            <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">{imageAnalysis.qualityScore}/10</div>
-                          </div>
-                        )}
-
-                        {imageAnalysis.quality && (
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Quality Assessment</div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.quality}</p>
-                          </div>
-                        )}
-
-                        {imageAnalysis.lightingComposition && (
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">💡 Lighting & Composition</div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.lightingComposition}</p>
-                          </div>
-                        )}
-
-                        {imageAnalysis.colorBalance && (
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">🎨 Color Balance</div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.colorBalance}</p>
-                          </div>
-                        )}
-
-                        {imageAnalysis.recommendations && (
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">📋 Recommendations</div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.recommendations}</p>
-                          </div>
-                        )}
-
-                        {imageAnalysis.suggestedEffects && (
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">✨ Suggested Effects</div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.suggestedEffects}</p>
-                          </div>
-                        )}
-
-                        {imageAnalysis.analysis && (
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">📊 Full Analysis</div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{imageAnalysis.analysis}</p>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-center py-8">
-                        <div className="text-gray-500 dark:text-gray-400">No analysis available</div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Footer */}
-                  <div className="border-t border-gray-200 dark:border-gray-800 px-6 py-4 bg-gray-50 dark:bg-slate-800 flex gap-3">
-                    <button
-                      onClick={() => setAnalyzeOpen(false)}
-                      className="flex-1 px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                    >
-                      Close
-                    </button>
-                    <button
-                      onClick={() => {
-                        analyzeImageQuality();
-                      }}
-                      disabled={analyzeLoading}
-                      className="flex-1 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 transition disabled:opacity-50"
-                    >
-                      {analyzeLoading ? '⏳ Re-analyzing...' : '🔄 Re-analyze'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Hashtags Generator Popover */}
-            {hashtagsOpen && (
-              <div
-                className="absolute bg-white dark:bg-slate-800 rounded-xl border border-purple-200 dark:border-purple-700 shadow-2xl z-50 w-96 max-h-96 overflow-hidden"
-                style={{
-                  top: `${hashtagPopoverPos.top}px`,
-                  left: `${hashtagPopoverPos.left}px`,
-                  maxWidth: 'calc(100vw - 20px)'
-                }}
-              >
+          {/* Modify with Prompt Modal */}
+          {modifyPromptOpen && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+              <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-purple-200 dark:border-purple-700 px-5 py-3 bg-purple-50 dark:bg-purple-900/20">
-                  <h3 className="font-semibold text-sm text-gray-900 dark:text-white">#️⃣ Generated Hashtags</h3>
+                <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 px-6 py-4">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">🖌️ Modify Image with Prompt</h2>
                   <button
-                    onClick={() => setHashtagsOpen(false)}
-                    className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-lg leading-none"
+                    onClick={() => setModifyPromptOpen(false)}
+                    className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl leading-none"
                   >
                     ✕
                   </button>
                 </div>
 
                 {/* Content */}
-                <div className="px-5 py-3 max-h-64 overflow-y-auto space-y-3">
-                  {generatedHashtags ? (
+                <div className="px-6 py-6">
+                  <div className="space-y-4">
+                    {/* Quick Prompt Options */}
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Quick Options:</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setModifyPrompt('Make the colors more vibrant and saturated')}
+                          className="px-3 py-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
+                        >
+                          🎨 Vibrant Colors
+                        </button>
+                        <button
+                          onClick={() => setModifyPrompt('Increase contrast and sharpness')}
+                          className="px-3 py-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
+                        >
+                          ✨ Sharp & Clear
+                        </button>
+                        <button
+                          onClick={() => setModifyPrompt('Add vintage film effect')}
+                          className="px-3 py-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
+                        >
+                          📽️ Vintage Look
+                        </button>
+                        <button
+                          onClick={() => setModifyPrompt('Blur background and focus on subject')}
+                          className="px-3 py-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
+                        >
+                          🎯 Blur Background
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Custom Prompt Input */}
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        📝 Custom Prompt
+                      </label>
+                      <textarea
+                        value={modifyPrompt}
+                        onChange={(e) => setModifyPrompt(e.target.value)}
+                        placeholder="Describe how you want to modify your image... (e.g., 'Make it look like an oil painting' or 'Add sunset colors')"
+                        className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                        rows={4}
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                        Be specific about the style, colors, or effects you want
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="border-t border-gray-200 dark:border-gray-800 px-6 py-4 bg-gray-50 dark:bg-slate-800 flex gap-3">
+                  <button
+                    onClick={() => {
+                      setModifyPromptOpen(false);
+                      setModifyPrompt('');
+                    }}
+                    className="flex-1 px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (modifyPrompt.trim()) {
+                        console.log('🖌️ Image modification with prompt:', modifyPrompt);
+                        alert(`✨ Modifying image with prompt:\n\n"${modifyPrompt}"\n\nFeature coming soon!`);
+                        setModifyPromptOpen(false);
+                        setModifyPrompt('');
+                      } else {
+                        alert('Please enter a prompt first');
+                      }
+                    }}
+                    disabled={modifyPromptLoading || !modifyPrompt.trim()}
+                    className="flex-1 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {modifyPromptLoading ? '⏳ Processing...' : '✨ Apply Modification'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Image Analysis Modal */}
+          {analyzeOpen && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+              <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 px-6 py-4">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">🎨 Image Analysis & Suggestions</h2>
+                  <button
+                    onClick={() => setAnalyzeOpen(false)}
+                    className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="px-6 py-4 max-h-96 overflow-y-auto space-y-4">
+                  {imageAnalysis ? (
                     <>
-                      {generatedHashtags.contentType && (
-                        <div className="text-xs">
-                          <span className="font-semibold text-gray-900 dark:text-white">Content Type: </span>
-                          <span className="text-gray-700 dark:text-gray-300">{generatedHashtags.contentType}</span>
+                      {imageAnalysis.qualityScore && (
+                        <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700">
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Quality Score</div>
+                          <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">{imageAnalysis.qualityScore}/10</div>
+                        </div>
+                      )}
+                      
+                      {imageAnalysis.quality && (
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Quality Assessment</div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.quality}</p>
                         </div>
                       )}
 
-                      {generatedHashtags.trendingTags && generatedHashtags.trendingTags.length > 0 && (
+                      {imageAnalysis.lightingComposition && (
                         <div>
-                          <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">🔥 Trending Tags</div>
-                          <div className="flex flex-wrap gap-1">
-                            {generatedHashtags.trendingTags.map((tag, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => {
-                                  const current = captionRef.current?.value || '';
-                                  captionRef.current.value = current + (current ? ' ' : '') + tag;
-                                  setHashtagsOpen(false);
-                                }}
-                                className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-medium hover:bg-blue-200 dark:hover:bg-blue-900/50 transition"
-                              >
-                                {tag}
-                              </button>
-                            ))}
-                          </div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">💡 Lighting & Composition</div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.lightingComposition}</p>
                         </div>
                       )}
 
-                      {generatedHashtags.nicherTags && generatedHashtags.nicherTags.length > 0 && (
+                      {imageAnalysis.colorBalance && (
                         <div>
-                          <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">🎯 Niche Tags</div>
-                          <div className="flex flex-wrap gap-1">
-                            {generatedHashtags.nicherTags.map((tag, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => {
-                                  const current = captionRef.current?.value || '';
-                                  captionRef.current.value = current + (current ? ' ' : '') + tag;
-                                  setHashtagsOpen(false);
-                                }}
-                                className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full text-xs font-medium hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
-                              >
-                                {tag}
-                              </button>
-                            ))}
-                          </div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">🎨 Color Balance</div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.colorBalance}</p>
                         </div>
                       )}
 
-                      {generatedHashtags.brandTags && generatedHashtags.brandTags.length > 0 && (
+                      {imageAnalysis.recommendations && (
                         <div>
-                          <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">⭐ Brand Tags</div>
-                          <div className="flex flex-wrap gap-1">
-                            {generatedHashtags.brandTags.map((tag, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => {
-                                  const current = captionRef.current?.value || '';
-                                  captionRef.current.value = current + (current ? ' ' : '') + tag;
-                                  setHashtagsOpen(false);
-                                }}
-                                className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-xs font-medium hover:bg-amber-200 dark:hover:bg-amber-900/50 transition"
-                              >
-                                {tag}
-                              </button>
-                            ))}
-                          </div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">📋 Recommendations</div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.recommendations}</p>
                         </div>
                       )}
 
-                      {generatedHashtags.tags && generatedHashtags.tags.length > 0 && (
+                      {imageAnalysis.suggestedEffects && (
                         <div>
-                          <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">📌 All Tags</div>
-                          <div className="flex flex-wrap gap-1">
-                            {generatedHashtags.tags.map((tag, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => {
-                                  const current = captionRef.current?.value || '';
-                                  captionRef.current.value = current + (current ? ' ' : '') + tag;
-                                }}
-                                className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-full text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-                              >
-                                {tag}
-                              </button>
-                            ))}
-                          </div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">✨ Suggested Effects</div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300">{imageAnalysis.suggestedEffects}</p>
+                        </div>
+                      )}
+
+                      {imageAnalysis.analysis && (
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">📊 Full Analysis</div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{imageAnalysis.analysis}</p>
                         </div>
                       )}
                     </>
                   ) : (
-                    <div className="text-center py-4">
-                      <div className="text-sm text-gray-500 dark:text-gray-400">No hashtags generated</div>
+                    <div className="text-center py-8">
+                      <div className="text-gray-500 dark:text-gray-400">No analysis available</div>
                     </div>
                   )}
                 </div>
 
                 {/* Footer */}
-                <div className="border-t border-gray-200 dark:border-gray-700 px-5 py-2 bg-gray-50 dark:bg-gray-900/20 flex gap-2">
+                <div className="border-t border-gray-200 dark:border-gray-800 px-6 py-4 bg-gray-50 dark:bg-slate-800 flex gap-3">
                   <button
-                    onClick={() => setHashtagsOpen(false)}
-                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                    onClick={() => setAnalyzeOpen(false)}
+                    className="flex-1 px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                   >
                     Close
                   </button>
                   <button
                     onClick={() => {
-                      generateHashtagsForImage();
+                      analyzeImageQuality();
                     }}
-                    disabled={hashtagsLoading}
-                    className="flex-1 px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={analyzeLoading}
+                    className="flex-1 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 transition disabled:opacity-50"
                   >
-                    {hashtagsLoading ? '⏳ Regenerating...' : '🔄 Regenerate'}
+                    {analyzeLoading ? '⏳ Re-analyzing...' : '🔄 Re-analyze'}
                   </button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Backdrop to close popover when clicking outside */}
-            {hashtagsOpen && (
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setHashtagsOpen(false)}
-              />
-            )}
-
-            {feed.map((item) => (
-              <Post key={item._id} item={item} onLike={toggleLike} onDelete={handleDelete} onShare={handleShare} onUpdate={handleUpdate} />
-            ))}
-          </main>
-
-          {/* Right sidebar */}
-          <aside className="sticky top-0 hidden h-[100dvh] w-80 flex-col gap-6 py-6 md:flex">
-            <UserCard />
-            <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:shadow-md transition-shadow">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="text-sm font-bold text-gray-900 dark:text-white">👥 Suggestions for you</div>
-                <button className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition">See all</button>
+          {/* Hashtags Generator Popover */}
+          {hashtagsOpen && (
+            <div 
+              className="absolute bg-white dark:bg-slate-800 rounded-xl border border-purple-200 dark:border-purple-700 shadow-2xl z-50 w-96 max-h-96 overflow-hidden"
+              style={{ 
+                top: `${hashtagPopoverPos.top}px`, 
+                left: `${hashtagPopoverPos.left}px`,
+                maxWidth: 'calc(100vw - 20px)'
+              }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-purple-200 dark:border-purple-700 px-5 py-3 bg-purple-50 dark:bg-purple-900/20">
+                <h3 className="font-semibold text-sm text-gray-900 dark:text-white">#️⃣ Generated Hashtags</h3>
+                <button
+                  onClick={() => setHashtagsOpen(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-lg leading-none"
+                >
+                  ✕
+                </button>
               </div>
-              <div className="space-y-4">
-                {suggestions.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="text-4xl mb-3">🎉</div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      You&apos;re all caught up!
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                      No new suggestions right now
-                    </p>
-                  </div>
-                ) : (
-                  suggestions.map((s) => {
-                    const isFollowing = followingIds.has(s.id);
-                    return (
-                      <div key={s.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
-                        <Avatar name={s.name} src={s.profilePic} />
-                        <div className="flex-1 leading-tight min-w-0">
-                          <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                            <Link href={`/u/${s.name}`} className="hover:text-blue-500 dark:hover:text-blue-400 transition">{s.name}</Link>
-                          </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">{s.mutualCount ? `${s.mutualCount} mutual` : 'Suggested'}</div>
-                        </div>
-                        <button
-                          onClick={() => follow(s.id)}
-                          disabled={isFollowing}
-                          className={`px-4 py-1.5 text-xs font-semibold text-white rounded-lg transition-all transform ${isFollowing
-                            ? 'bg-gray-400 cursor-not-allowed'
-                            : 'bg-blue-500 hover:bg-blue-600 hover:scale-105 active:scale-95'
-                            }`}
-                        >
-                          {isFollowing ? '...' : 'Follow'}
-                        </button>
+
+              {/* Content */}
+              <div className="px-5 py-3 max-h-64 overflow-y-auto space-y-3">
+                {generatedHashtags ? (
+                  <>
+                    {generatedHashtags.contentType && (
+                      <div className="text-xs">
+                        <span className="font-semibold text-gray-900 dark:text-white">Content Type: </span>
+                        <span className="text-gray-700 dark:text-gray-300">{generatedHashtags.contentType}</span>
                       </div>
-                    );
-                  })
+                    )}
+
+                    {generatedHashtags.trendingTags && generatedHashtags.trendingTags.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">🔥 Trending Tags</div>
+                        <div className="flex flex-wrap gap-1">
+                          {generatedHashtags.trendingTags.map((tag, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                const current = captionRef.current?.value || '';
+                                captionRef.current.value = current + (current ? ' ' : '') + tag;
+                                setHashtagsOpen(false);
+                              }}
+                              className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-medium hover:bg-blue-200 dark:hover:bg-blue-900/50 transition"
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {generatedHashtags.nicherTags && generatedHashtags.nicherTags.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">🎯 Niche Tags</div>
+                        <div className="flex flex-wrap gap-1">
+                          {generatedHashtags.nicherTags.map((tag, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                const current = captionRef.current?.value || '';
+                                captionRef.current.value = current + (current ? ' ' : '') + tag;
+                                setHashtagsOpen(false);
+                              }}
+                              className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full text-xs font-medium hover:bg-purple-200 dark:hover:bg-purple-900/50 transition"
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {generatedHashtags.brandTags && generatedHashtags.brandTags.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">⭐ Brand Tags</div>
+                        <div className="flex flex-wrap gap-1">
+                          {generatedHashtags.brandTags.map((tag, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                const current = captionRef.current?.value || '';
+                                captionRef.current.value = current + (current ? ' ' : '') + tag;
+                                setHashtagsOpen(false);
+                              }}
+                              className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-xs font-medium hover:bg-amber-200 dark:hover:bg-amber-900/50 transition"
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {generatedHashtags.tags && generatedHashtags.tags.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">📌 All Tags</div>
+                        <div className="flex flex-wrap gap-1">
+                          {generatedHashtags.tags.map((tag, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                const current = captionRef.current?.value || '';
+                                captionRef.current.value = current + (current ? ' ' : '') + tag;
+                              }}
+                              className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-full text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-4">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">No hashtags generated</div>
+                  </div>
                 )}
               </div>
+
+              {/* Footer */}
+              <div className="border-t border-gray-200 dark:border-gray-700 px-5 py-2 bg-gray-50 dark:bg-gray-900/20 flex gap-2">
+                <button
+                  onClick={() => setHashtagsOpen(false)}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    generateHashtagsForImage();
+                  }}
+                  disabled={hashtagsLoading}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {hashtagsLoading ? '⏳ Regenerating...' : '🔄 Regenerate'}
+                </button>
+              </div>
             </div>
-            <div className="px-1 text-[11px] leading-5 text-gray-500 dark:text-gray-400">
-              About • Help • Press • API • Jobs • Privacy • Terms • Locations
+          )}
+
+          {/* Backdrop to close popover when clicking outside */}
+          {hashtagsOpen && (
+            <div 
+              className="fixed inset-0 z-40"
+              onClick={() => setHashtagsOpen(false)}
+            />
+          )}
+
+          {feed.map((item) => (
+            <Post key={item._id} item={item} onLike={toggleLike} onDelete={handleDelete} onShare={handleShare} onUpdate={handleUpdate} />
+          ))}
+        </main>
+
+        {/* Right sidebar */}
+        <aside className="sticky top-0 hidden h-[100dvh] w-80 flex-col gap-6 py-6 md:flex">
+          <UserCard />
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-sm font-bold text-gray-900 dark:text-white">👥 Suggestions for you</div>
+              <button className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition">See all</button>
             </div>
-          </aside>
-        </div>
-      </div >
+            <div className="space-y-4">
+              {suggestions.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-4xl mb-3">🎉</div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    You&apos;re all caught up!
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    No new suggestions right now
+                  </p>
+                </div>
+              ) : (
+                suggestions.map((s) => {
+                  const isFollowing = followingIds.has(s.id);
+                  return (
+                    <div key={s.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
+                      <Avatar name={s.name} src={s.profilePic} />
+                      <div className="flex-1 leading-tight min-w-0">
+                        <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                          <Link href={`/u/${s.name}`} className="hover:text-blue-500 dark:hover:text-blue-400 transition">{s.name}</Link>
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{s.mutualCount ? `${s.mutualCount} mutual` : 'Suggested'}</div>
+                      </div>
+                      <button 
+                        onClick={() => follow(s.id)} 
+                        disabled={isFollowing}
+                        className={`px-4 py-1.5 text-xs font-semibold text-white rounded-lg transition-all transform ${
+                          isFollowing 
+                            ? 'bg-gray-400 cursor-not-allowed' 
+                            : 'bg-blue-500 hover:bg-blue-600 hover:scale-105 active:scale-95'
+                        }`}
+                      >
+                        {isFollowing ? '...' : 'Follow'}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <div className="px-1 text-[11px] leading-5 text-gray-500 dark:text-gray-400">
+            About • Help • Press • API • Jobs • Privacy • Terms • Locations
+          </div>
+        </aside>
+      </div>
+      </div>
 
       {/* Bottom nav (mobile) */}
-      < nav className="fixed inset-x-0 bottom-0 z-10 flex justify-around border-t border-gray-200 bg-white py-2 md:hidden" >
-        {
-          ['home', 'search', 'reels', 'create', 'user'].map((i) => (
-            <button key={i} className="p-2 text-black dark:text-white"><Icon name={i} /></button>
-          ))
-        }
-      </nav >
-    </div >
+      <nav className="fixed inset-x-0 bottom-0 z-10 flex justify-around border-t border-gray-200 bg-white py-2 md:hidden">
+        {['home','search','reels','create','user'].map((i) => (
+          <button key={i} className="p-2 text-black dark:text-white"><Icon name={i} /></button>
+        ))}
+      </nav>
+    </div>
   );
 }

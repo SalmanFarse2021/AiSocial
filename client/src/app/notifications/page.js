@@ -180,20 +180,20 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-white dark:bg-gray-900 transition-colors">
       <div className="mx-auto max-w-2xl px-4 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6 sticky top-0 bg-gray-900 py-4 z-10">
+        <div className="flex items-center justify-between mb-6 sticky top-0 bg-white dark:bg-gray-900 py-4 z-10 border-b border-gray-200 dark:border-white/10">
           <div className="flex items-center gap-3">
             <Link 
               href="/home"
-              className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200"
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </Link>
-            <h1 className="text-2xl font-bold text-white">Notifications</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Notifications</h1>
           </div>
           {unreadCount > 0 && (
             <button
@@ -207,7 +207,7 @@ export default function NotificationsPage() {
 
         {/* Error State */}
         {error && (
-          <div className="bg-red-900 bg-opacity-30 border border-red-600 text-red-300 px-4 py-3 rounded-lg mb-4">
+          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-600 text-red-700 dark:text-red-200 px-4 py-3 rounded-lg mb-4">
             {error}
           </div>
         )}
@@ -216,22 +216,22 @@ export default function NotificationsPage() {
         {loading && (
           <div className="text-center py-12">
             <div className="inline-block">
-              <div className="animate-spin h-8 w-8 border-4 border-white/20 border-t-sky-600 rounded-full" />
+              <div className="animate-spin h-8 w-8 border-4 border-gray-200 dark:border-white/20 border-t-sky-600 rounded-full" />
             </div>
-            <p className="text-white/60 mt-3">Loading notifications...</p>
+            <p className="text-gray-600 dark:text-white/60 mt-3">Loading notifications...</p>
           </div>
         )}
 
         {/* Notifications List */}
         {!loading && notifications.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {notifications.map(notification => (
               <div
                 key={notification._id}
-                className={`flex items-start gap-4 p-4 rounded-lg border transition ${
+                className={`flex items-start gap-4 p-4 rounded-2xl border transition-colors ${
                   notification.read
-                    ? 'bg-gray-800 border-white/10 hover:bg-gray-700'
-                    : 'bg-gray-800 border-sky-600 hover:bg-gray-700'
+                    ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    : 'bg-blue-50 dark:bg-gray-800 border-blue-200 dark:border-sky-600 hover:bg-blue-100 dark:hover:bg-gray-700'
                 }`}
               >
                 {/* Sender Avatar */}
@@ -259,7 +259,7 @@ export default function NotificationsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-2 mb-1">
                     {getNotificationIcon(notification.type)}
-                    <div className="text-white font-medium text-left">
+                    <div className="text-gray-900 dark:text-white font-medium text-left">
                       {(() => {
                         const { actorName, username, message } = getNotificationMessage(notification);
                         return (
@@ -270,7 +270,7 @@ export default function NotificationsPage() {
                                   window.location.href = `/u/${username}`;
                                 }
                               }}
-                              className="hover:text-sky-400 transition font-semibold"
+                              className="text-gray-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400 transition font-semibold"
                             >
                               {actorName}
                             </button>
@@ -281,7 +281,7 @@ export default function NotificationsPage() {
                                   window.location.href = `/feed?postId=${notification.post._id}`;
                                 }
                               }}
-                              className="hover:text-sky-400 transition font-normal"
+                              className="text-gray-600 dark:text-gray-300 hover:text-sky-600 dark:hover:text-sky-400 transition font-normal"
                             >
                               {message}
                             </button>
@@ -292,12 +292,12 @@ export default function NotificationsPage() {
                   </div>
                   
                   {notification.post && (
-                    <p className="text-xs text-white/50 mb-2 line-clamp-1">
+                    <p className="text-xs text-gray-500 dark:text-white/50 mb-2 line-clamp-1">
                       &ldquo;{notification.post.caption?.substring(0, 50) || 'Photo'}&rdquo;
                     </p>
                   )}
                   
-                  <p className="text-xs text-white/50">
+                  <p className="text-xs text-gray-400 dark:text-white/50">
                     {formatTime(notification.createdAt)}
                   </p>
                 </div>
@@ -309,7 +309,7 @@ export default function NotificationsPage() {
                   )}
                   <button
                     onClick={() => deleteNotification(notification._id)}
-                    className="text-white/40 hover:text-red-500 transition p-2"
+                    className="text-gray-400 dark:text-white/40 hover:text-red-500 transition p-2"
                     title="Delete notification"
                   >
                     <Icon name="trash" className="w-4 h-4" />
@@ -324,8 +324,8 @@ export default function NotificationsPage() {
         {!loading && notifications.length === 0 && !error && (
           <div className="text-center py-12">
             <div className="text-4xl mb-4">🔔</div>
-            <p className="text-white/60 text-lg">No notifications yet</p>
-            <p className="text-white/40 text-sm mt-2">When someone likes or comments on your posts, you&apos;ll see it here</p>
+            <p className="text-gray-600 dark:text-white/60 text-lg">No notifications yet</p>
+            <p className="text-gray-400 dark:text-white/40 text-sm mt-2">When someone likes or comments on your posts, you&apos;ll see it here</p>
           </div>
         )}
       </div>

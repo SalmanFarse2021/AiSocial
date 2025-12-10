@@ -1,27 +1,28 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Download, Share2 } from 'lucide-react';
 
 const PhotoViewer = ({ photos, initialIndex = 0, onClose }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isZoomed, setIsZoomed] = useState(false);
+  const photoCount = Array.isArray(photos) ? photos.length : 0;
+  const currentPhoto = photoCount ? photos[currentIndex] : null;
 
-  if (!photos || photos.length === 0) return null;
-
-  const currentPhoto = photos[currentIndex];
-
-  const handlePrevious = () => {
-    setCurrentIndex((prev) => (prev === 0 ? photos.length - 1 : prev - 1));
+  const handlePrevious = useCallback(() => {
+    if (!photoCount) return;
+    setCurrentIndex((prev) => (prev === 0 ? photoCount - 1 : prev - 1));
     setIsZoomed(false);
-  };
+  }, [photoCount]);
 
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev === photos.length - 1 ? 0 : prev + 1));
+  const handleNext = useCallback(() => {
+    if (!photoCount) return;
+    setCurrentIndex((prev) => (prev === photoCount - 1 ? 0 : prev + 1));
     setIsZoomed(false);
-  };
+  }, [photoCount]);
 
   const handleDownload = () => {
+    if (!currentPhoto?.url) return;
     if (currentPhoto.url) {
       const link = document.createElement('a');
       link.href = currentPhoto.url;
@@ -33,6 +34,7 @@ const PhotoViewer = ({ photos, initialIndex = 0, onClose }) => {
   };
 
   const handleShare = () => {
+    if (!currentPhoto?.url || !navigator.share) return;
     if (currentPhoto.url && navigator.share) {
       navigator.share({
         title: 'Photo',
@@ -41,6 +43,19 @@ const PhotoViewer = ({ photos, initialIndex = 0, onClose }) => {
       }).catch(err => console.log('Share error:', err));
     }
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || photoCount === 0) return undefined;
+    const handleKeyPress = (e) => {
+      if (e.key === 'ArrowLeft') handlePrevious();
+      if (e.key === 'ArrowRight') handleNext();
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [handleNext, handlePrevious, onClose, photoCount]);
+
+  if (!photoCount) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center">
@@ -124,20 +139,6 @@ const PhotoViewer = ({ photos, initialIndex = 0, onClose }) => {
         </div>
       </div>
 
-      {/* Keyboard Navigation */}
-      {typeof window !== 'undefined' && (
-        <div className="hidden">
-          {React.useEffect(() => {
-            const handleKeyPress = (e) => {
-              if (e.key === 'ArrowLeft') handlePrevious();
-              if (e.key === 'ArrowRight') handleNext();
-              if (e.key === 'Escape') onClose();
-            };
-            window.addEventListener('keydown', handleKeyPress);
-            return () => window.removeEventListener('keydown', handleKeyPress);
-          }, [currentIndex])}
-        </div>
-      )}
     </div>
   );
 };

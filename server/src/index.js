@@ -1,8 +1,8 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
-import dotenv from 'dotenv';
 import http from 'http';
 import { Server } from 'socket.io';
 import { connectDB } from './modules/db.js';
@@ -22,12 +22,14 @@ import notificationRoutes from './routes/notification.routes.js';
 import hashtagRoutes from './routes/hashtag.routes.js';
 import statsRoutes from './routes/stats.routes.js';
 
-dotenv.config();
-
-const PORT = process.env.PORT || 5000;
+// Default port matches client fallback (5050) and avoids macOS Control Center using 5000
+const DEFAULT_PORT = 5050;
+const PORT = Number(process.env.PORT) || DEFAULT_PORT;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 
 const app = express();
+// Required for correct protocol/host detection behind proxies (e.g., Vercel) for OAuth redirects
+app.set('trust proxy', 1);
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: CLIENT_ORIGIN, credentials: true },

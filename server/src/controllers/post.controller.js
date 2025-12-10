@@ -6,13 +6,119 @@ import { User } from '../models/User.js';
 import { Comment } from '../models/Comment.js';
 import { createNotification } from './notification.controller.js';
 
+const mediaTypeValues = ['image', 'video', 'embed'];
+const videoFormats = new Set(['mp4', 'webm', 'ogg', 'ogv', 'mov', 'm4v', 'avi', 'mkv']);
+const videoRegex = /\.(mp4|webm|ogg|ogv|mov|m4v|avi|mkv)(?:$|\?)/i;
+const pollOptionLimit = 4;
+
+function visibilityOrClauses(now = new Date()) {
+  return [
+    { scheduledAt: { $exists: false } },
+    { scheduledAt: null },
+    { scheduledAt: { $lte: now } },
+  ];
+}
+
+function normalizeMediaItems(list = []) {
+  return (list || [])
+    .filter((item) => item && item.url)
+    .map((item) => {
+      let type = typeof item.type === 'string' ? item.type.toLowerCase() : undefined;
+      if (!mediaTypeValues.includes(type)) {
+        const format = typeof item.format === 'string' ? item.format.toLowerCase() : '';
+        const url = typeof item.url === 'string' ? item.url.toLowerCase() : '';
+        if ((format && videoFormats.has(format)) || (url && videoRegex.test(url))) {
+          type = 'video';
+        } else {
+          type = 'image';
+        }
+      }
+
+      return {
+        url: item.url,
+        width: item.width,
+        height: item.height,
+        format: item.format,
+        duration: typeof item.duration === 'number' ? item.duration : undefined,
+        type,
+      };
+    });
+}
+
+function normalizePollPayload(raw) {
+  if (!raw || !raw.question) return undefined;
+  const options = (raw.options || [])
+    .map((opt) => (opt?.text || '').trim())
+    .filter(Boolean)
+    .slice(0, pollOptionLimit);
+  if (!options.length) return undefined;
+  return {
+    question: raw.question.trim(),
+    allowMultiple: !!raw.allowMultiple,
+    options: options.map((text) => ({ text, voters: [] })),
+  };
+}
+
+function formatPoll(poll, currentUserId) {
+  if (!poll || !poll.question || !Array.isArray(poll.options) || !poll.options.length) {
+    return null;
+  }
+  const userId = currentUserId ? String(currentUserId) : null;
+  let userChoice = null;
+  let totalVotes = 0;
+  const options = poll.options.map((opt, index) => {
+    const votes = Array.isArray(opt.voters) ? opt.voters.length : 0;
+    totalVotes += votes;
+    if (userId && userChoice === null && Array.isArray(opt.voters)) {
+      if (opt.voters.some((uid) => String(uid) === userId)) {
+        userChoice = index;
+      }
+    }
+    return {
+      text: opt.text,
+      votes,
+    };
+  });
+
+  const computedOptions = options.map((opt) => ({
+    ...opt,
+    percentage: totalVotes ? Math.round((opt.votes / totalVotes) * 100) : 0,
+  }));
+
+  return {
+    question: poll.question,
+    allowMultiple: !!poll.allowMultiple,
+    totalVotes,
+    options: computedOptions,
+    userChoice,
+  };
+}
+
+function sanitizeSharedPost(shared, currentUserId) {
+  if (!shared) return shared;
+  const { poll, likedBy, ...rest } = shared;
+  return {
+    ...rest,
+    poll: formatPoll(poll, currentUserId),
+  };
+}
+
+const pollOptionSchema = z.object({ text: z.string().min(1).max(80) });
+
 const createSchema = z
   .object({
     caption: z.string().max(2200).optional(),
     type: z.enum(['post', 'reel']).default('post'),
     media: z
       .array(
-        z.object({ url: z.string().url(), width: z.number().optional(), height: z.number().optional(), format: z.string().optional() })
+        z.object({
+          url: z.string().url(),
+          width: z.number().optional(),
+          height: z.number().optional(),
+          format: z.string().optional(),
+          duration: z.number().optional(),
+          type: z.enum(['image', 'video', 'embed']).optional(),
+        })
       )
       .optional(),
     privacy: z.enum(['public','friends','private','custom']).optional(),
@@ -23,10 +129,24 @@ const createSchema = z
     location: z.object({ name: z.string(), lat: z.number().min(-90).max(90).optional(), lng: z.number().min(-180).max(180).optional() }).optional(),
     feeling: z.string().max(40).optional(),
     activity: z.string().max(60).optional(),
+    poll: z
+      .object({
+        question: z.string().min(3).max(140),
+        allowMultiple: z.boolean().optional(),
+        options: z.array(pollOptionSchema).min(2).max(pollOptionLimit),
+      })
+      .optional(),
+    scheduledAt: z.string().datetime().optional(),
   })
-  .refine((d) => (d.caption && d.caption.trim().length > 0) || (Array.isArray(d.media) && d.media.length > 0), {
-    message: 'Provide text or at least one media',
-  });
+  .refine(
+    (d) =>
+      (d.caption && d.caption.trim().length > 0) ||
+      (Array.isArray(d.media) && d.media.length > 0) ||
+      !!d.poll,
+    {
+      message: 'Provide text, poll, or at least one media',
+    }
+  );
 
 export async function create(req, res) {
   try {
@@ -55,11 +175,22 @@ export async function create(req, res) {
       albumId = album._id;
     }
 
+    const normalizedMedia = normalizeMediaItems(body.media);
+    const pollPayload = normalizePollPayload(body.poll);
+    let scheduledAt = null;
+    if (body.scheduledAt) {
+      const parsed = new Date(body.scheduledAt);
+      if (!Number.isNaN(parsed.getTime()) && parsed > new Date()) {
+        scheduledAt = parsed;
+      }
+    }
+    const status = scheduledAt ? 'scheduled' : 'published';
+
     const doc = await Post.create({
       user: req.user._id,
       type: body.type || 'post',
       caption: body.caption || '',
-      media: body.media || [],
+      media: normalizedMedia,
       privacy: body.privacy || 'public',
       album: albumId || undefined,
       taggedUsers,
@@ -68,9 +199,21 @@ export async function create(req, res) {
         : undefined,
       feeling: body.feeling,
       activity: body.activity,
+      poll: pollPayload,
+      scheduledAt,
+      status,
     });
     const populated = await Post.findById(doc._id).populate('user', 'username profilePic').lean();
-    res.status(201).json({ post: { ...populated, didLike: false, likes: 0 } });
+    const { poll, likedBy, ...rest } = populated;
+    res.status(201).json({
+      post: {
+        ...rest,
+        poll: formatPoll(poll, req.user?._id),
+        didLike: false,
+        likes: 0,
+        canDelete: true,
+      },
+    });
   } catch (err) {
     if (err?.issues) return res.status(400).json({ message: 'Invalid input', issues: err.issues });
     res.status(500).json({ message: 'Server error' });
@@ -91,6 +234,9 @@ export async function getUserPosts(req, res) {
     if (cursor && !isNaN(cursor.getTime())) {
       query.createdAt = { $lt: cursor };
     }
+    if (!req.user || String(req.user._id) !== String(user._id)) {
+      query.$or = visibilityOrClauses();
+    }
 
     const posts = await Post.find(query)
       .sort({ pinnedAt: -1, createdAt: -1 })
@@ -99,13 +245,19 @@ export async function getUserPosts(req, res) {
       .lean();
     const nextCursor = posts.length > limit ? posts[limit - 1]?.createdAt : null;
     const slice = posts.slice(0, limit);
-    const withState = slice.map((p) => ({
-      ...p,
-      didLike: req.user ? (p.likedBy || []).some((id) => String(id) === String(req.user._id)) : false,
-      likes: (p.likedBy || []).length,
-      canDelete: req.user ? String(p.user?._id || p.user) === String(req.user._id) : false,
-      pinned: !!p.pinned,
-    }));
+    const withState = slice.map((p) => {
+      const { likedBy, poll, ...rest } = p;
+      const sharedFrom = sanitizeSharedPost(rest.sharedFrom, req.user?._id);
+      return {
+        ...rest,
+        didLike: req.user ? (likedBy || []).some((id) => String(id) === String(req.user._id)) : false,
+        likes: (likedBy || []).length,
+        canDelete: req.user ? String(p.user?._id || p.user) === String(req.user._id) : false,
+        pinned: !!p.pinned,
+        poll: formatPoll(poll, req.user?._id),
+        sharedFrom,
+      };
+    });
     res.json({ posts: withState, nextCursor });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -126,6 +278,7 @@ export async function feed(req, res) {
     const cursor = req.query.cursor ? new Date(req.query.cursor) : null;
     const query = {};
     if (cursor && !isNaN(cursor.getTime())) query.createdAt = { $lt: cursor };
+    query.$or = visibilityOrClauses();
     const docs = await Post.find(query)
       .sort({ pinnedAt: -1, createdAt: -1 })
       .limit(limit + 1)
@@ -137,15 +290,61 @@ export async function feed(req, res) {
       .lean();
     const slice = docs.slice(0, limit);
     const nextCursor = docs.length > limit ? docs[limit - 1]?.createdAt : null;
-    const items = slice.map((p) => ({
-      ...p,
-      didLike: (p.likedBy || []).some((id) => String(id) === String(req.user._id)),
-      likes: (p.likedBy || []).length,
-      canDelete: String(p.user?._id || p.user) === String(req.user._id),
-      pinned: !!p.pinned,
-    }));
+    const items = slice.map((p) => {
+      const { likedBy, poll, ...rest } = p;
+      const sharedFrom = sanitizeSharedPost(rest.sharedFrom, req.user?._id);
+      return {
+        ...rest,
+        didLike: (likedBy || []).some((id) => String(id) === String(req.user._id)),
+        likes: (likedBy || []).length,
+        canDelete: String(p.user?._id || p.user) === String(req.user._id),
+        pinned: !!p.pinned,
+        poll: formatPoll(poll, req.user?._id),
+        sharedFrom,
+      };
+    });
     res.json({ posts: items, nextCursor });
   } catch (e) {
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+export async function listVideos(req, res) {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+    const cursor = req.query.cursor ? new Date(req.query.cursor) : null;
+    const query = {
+      media: { $elemMatch: { type: { $in: ['video', 'embed'] } } },
+      $or: visibilityOrClauses(),
+    };
+    if (cursor && !isNaN(cursor.getTime())) query.createdAt = { $lt: cursor };
+
+    const docs = await Post.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit + 1)
+      .populate('user', 'username profilePic')
+      .populate({
+        path: 'sharedFrom',
+        populate: { path: 'user', select: 'username profilePic' },
+      })
+      .lean();
+    const slice = docs.slice(0, limit);
+    const nextCursor = docs.length > limit ? docs[limit - 1]?.createdAt : null;
+    const items = slice.map((p) => {
+      const { likedBy, poll, ...rest } = p;
+      const sharedFrom = sanitizeSharedPost(rest.sharedFrom, req.user?._id);
+      return {
+        ...rest,
+        didLike: (likedBy || []).some((id) => String(id) === String(req.user._id)),
+        likes: (likedBy || []).length,
+        canDelete: String(p.user?._id || p.user) === String(req.user._id),
+        poll: formatPoll(poll, req.user?._id),
+        sharedFrom,
+      };
+    });
+    res.json({ posts: items, nextCursor });
+  } catch (error) {
+    console.error('List videos error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 }
@@ -235,6 +434,7 @@ export async function addComment(req, res) {
 }
 
 const reactSchema2 = z.object({ type: z.enum(['like','love','care','haha','wow','sad','angry']) });
+const pollVoteSchema = z.object({ optionIndex: z.number().int().min(0) });
 export async function reactPost(req, res) {
   try {
     const id = req.params.id;
@@ -266,9 +466,27 @@ export async function sharePost(req, res) {
     const original = await Post.findById(id);
     if (!original) return res.status(404).json({ message: 'Post not found' });
     const caption = (req.body?.caption || '').toString();
-    const doc = await Post.create({ user: req.user._id, type: 'post', caption, media: original.media || [], sharedFrom: original._id, privacy: 'public' });
+    const doc = await Post.create({
+      user: req.user._id,
+      type: 'post',
+      caption,
+      media: normalizeMediaItems(original.media || []),
+      sharedFrom: original._id,
+      privacy: 'public',
+      scheduledAt: null,
+      status: 'published',
+    });
     const populated = await Post.findById(doc._id).populate('user', 'username profilePic').lean();
-    res.status(201).json({ post: { ...populated, didLike: false, likes: 0 } });
+    const { likedBy, poll, ...rest } = populated;
+    res.status(201).json({
+      post: {
+        ...rest,
+        didLike: false,
+        likes: 0,
+        poll: formatPoll(poll, req.user?._id),
+        canDelete: true,
+      },
+    });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -352,11 +570,13 @@ export async function updatePost(req, res) {
     if (typeof body.caption !== 'undefined') post.caption = body.caption;
     await post.save();
     const populated = await Post.findById(id).populate('user', 'username profilePic').lean();
+    const { likedBy, poll, ...rest } = populated;
     const withState = {
-      ...populated,
-      likes: (populated.likedBy || []).length,
-      didLike: (populated.likedBy || []).some((uid) => String(uid) === String(req.user._id)),
+      ...rest,
+      likes: (likedBy || []).length,
+      didLike: (likedBy || []).some((uid) => String(uid) === String(req.user._id)),
       canDelete: true,
+      poll: formatPoll(poll, req.user?._id),
     };
     res.json({ post: withState });
   } catch (e) {
@@ -375,17 +595,24 @@ export async function listTaggedPhotos(req, res) {
     const cursor = req.query.cursor ? new Date(req.query.cursor) : null;
     const query = { type: 'post', taggedUsers: user._id, 'media.0': { $exists: true } };
     if (cursor && !isNaN(cursor.getTime())) query.createdAt = { $lt: cursor };
+    query.$or = visibilityOrClauses();
     const posts = await Post.find(query)
       .sort({ createdAt: -1 })
       .limit(limit + 1)
       .populate('user', 'username profilePic')
       .lean();
     const nextCursor = posts.length > limit ? posts[limit - 1]?.createdAt : null;
-    const slice = posts.slice(0, limit).map((p) => ({
-      ...p,
-      didLike: (p.likedBy || []).some((id) => String(id) === String(req.user._id)),
-      likes: (p.likedBy || []).length,
-    }));
+    const slice = posts.slice(0, limit).map((p) => {
+      const { likedBy, poll, ...rest } = p;
+      const sharedFrom = sanitizeSharedPost(rest.sharedFrom, req.user?._id);
+      return {
+        ...rest,
+        didLike: (likedBy || []).some((id) => String(id) === String(req.user._id)),
+        likes: (likedBy || []).length,
+        poll: formatPoll(poll, req.user?._id),
+        sharedFrom,
+      };
+    });
     res.json({ posts: slice, nextCursor });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
@@ -405,22 +632,33 @@ export async function searchPosts(req, res) {
     // Search by caption or hashtags
     const posts = await Post.find({
       type: 'post',
-      $or: [
-        { caption: { $regex: query, $options: 'i' } },
-        { hashtags: { $regex: query, $options: 'i' } }
-      ]
+      $and: [
+        {
+          $or: [
+            { caption: { $regex: query, $options: 'i' } },
+            { hashtags: { $regex: query, $options: 'i' } },
+          ],
+        },
+        { $or: visibilityOrClauses() },
+      ],
     })
       .sort({ createdAt: -1 })
       .limit(limit)
       .populate('user', 'username profilePic displayName verified')
       .lean();
 
-    const formattedPosts = posts.map((p) => ({
-      ...p,
-      didLike: (p.likedBy || []).some((id) => String(id) === String(req.user._id)),
-      likes: (p.likedBy || []).length,
-      commentsCount: (p.comments || []).length,
-    }));
+    const formattedPosts = posts.map((p) => {
+      const { likedBy, poll, ...rest } = p;
+      const sharedFrom = sanitizeSharedPost(rest.sharedFrom, req.user?._id);
+      return {
+        ...rest,
+        didLike: (likedBy || []).some((id) => String(id) === String(req.user._id)),
+        likes: (likedBy || []).length,
+        commentsCount: (p.comments || []).length,
+        poll: formatPoll(poll, req.user?._id),
+        sharedFrom,
+      };
+    });
 
     res.json({ posts: formattedPosts });
   } catch (error) {
@@ -596,6 +834,57 @@ export async function getReplies(req, res) {
     res.json({ replies: repliesWithLikes });
   } catch (error) {
     console.error('Get replies error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+export async function votePoll(req, res) {
+  try {
+    const { optionIndex } = pollVoteSchema.parse(req.body);
+    const post = await Post.findById(req.params.id).select('poll');
+    if (!post || !post.poll || !Array.isArray(post.poll.options)) {
+      return res.status(404).json({ message: 'Poll not found' });
+    }
+    if (optionIndex < 0 || optionIndex >= post.poll.options.length) {
+      return res.status(400).json({ message: 'Invalid poll option' });
+    }
+    const userId = String(req.user._id);
+    post.poll.options.forEach((option, idx) => {
+      option.voters = (option.voters || []).filter((uid) => String(uid) !== userId);
+      if (idx === optionIndex) {
+        option.voters.push(req.user._id);
+      }
+    });
+    await post.save();
+    const updated = await Post.findById(req.params.id).lean();
+    res.json({ poll: formatPoll(updated.poll, req.user._id) });
+  } catch (error) {
+    if (error?.issues) return res.status(400).json({ message: 'Invalid input' });
+    console.error('Vote poll error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+export async function clearPollVote(req, res) {
+  try {
+    const post = await Post.findById(req.params.id).select('poll');
+    if (!post || !post.poll || !Array.isArray(post.poll.options)) {
+      return res.status(404).json({ message: 'Poll not found' });
+    }
+    const userId = String(req.user._id);
+    let changed = false;
+    post.poll.options.forEach((option) => {
+      const before = option.voters?.length || 0;
+      option.voters = (option.voters || []).filter((uid) => String(uid) !== userId);
+      if ((option.voters?.length || 0) !== before) changed = true;
+    });
+    if (changed) {
+      await post.save();
+    }
+    const updated = await Post.findById(req.params.id).lean();
+    res.json({ poll: formatPoll(updated.poll, req.user._id) });
+  } catch (error) {
+    console.error('Clear poll vote error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 }

@@ -12,7 +12,7 @@
   body {
     @apply min-h-screen bg-white text-gray-900;
   }
-  
+
   /* Dark mode */
   .dark body {
     @apply bg-gray-900 text-white;
