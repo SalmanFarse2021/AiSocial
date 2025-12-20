@@ -20,6 +20,39 @@ export const useWebRTC = (userId, socket) => {
     const peerConnection = useRef(null);
     const callTimerRef = useRef(null);
 
+    // End call
+    const endCall = useCallback(() => {
+        if (peerConnection.current) {
+            peerConnection.current.close();
+            peerConnection.current = null;
+        }
+
+        if (localStream) {
+            localStream.getTracks().forEach((track) => track.stop());
+            setLocalStream(null);
+        }
+
+        if (remoteStream) {
+            setRemoteStream(null);
+        }
+
+        if (callTimerRef.current) {
+            clearInterval(callTimerRef.current);
+            callTimerRef.current = null;
+        }
+
+        setIsCallActive(false);
+        setCallDuration(0);
+        setIsMuted(false);
+
+        if (socket && incomingCall) {
+            socket.emit('call:end', {
+                to: incomingCall.from,
+                from: userId,
+            });
+        }
+    }, [localStream, remoteStream, socket, userId, incomingCall]);
+
     // Initialize peer connection
     const createPeerConnection = useCallback(() => {
         const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -45,7 +78,7 @@ export const useWebRTC = (userId, socket) => {
         };
 
         return pc;
-    }, [userId, socket, incomingCall]);
+    }, [userId, socket, incomingCall, remoteUserId, endCall]);
 
     // Get user media
     const startLocalStream = async () => {
@@ -131,38 +164,7 @@ export const useWebRTC = (userId, socket) => {
         setIncomingCall(null);
     };
 
-    // End call
-    const endCall = useCallback(() => {
-        if (peerConnection.current) {
-            peerConnection.current.close();
-            peerConnection.current = null;
-        }
 
-        if (localStream) {
-            localStream.getTracks().forEach((track) => track.stop());
-            setLocalStream(null);
-        }
-
-        if (remoteStream) {
-            setRemoteStream(null);
-        }
-
-        if (callTimerRef.current) {
-            clearInterval(callTimerRef.current);
-            callTimerRef.current = null;
-        }
-
-        setIsCallActive(false);
-        setCallDuration(0);
-        setIsMuted(false);
-
-        if (socket && incomingCall) {
-            socket.emit('call:end', {
-                to: incomingCall.from,
-                from: userId,
-            });
-        }
-    }, [localStream, remoteStream, socket, userId, incomingCall]);
 
     // Toggle mute
     const toggleMute = () => {
