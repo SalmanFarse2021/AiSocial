@@ -2,14 +2,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { apiGet, apiPost } from '@/lib/api';
 import { isVideoMedia } from '@/lib/media';
-import { 
-  initSocket, 
-  disconnectSocket, 
-  emitSendMessage, 
-  emitJoinConversation, 
+import {
+  initSocket,
+  disconnectSocket,
+  emitSendMessage,
+  emitJoinConversation,
   emitLeaveConversation,
-  onMessageReceived 
+  onMessageReceived,
+  getSocket
 } from '@/lib/socket';
+import { useWebRTC } from '@/hooks/useWebRTC';
+import AudioCall from '@/components/AudioCall';
+import IncomingCallModal from '@/components/IncomingCallModal';
 
 export default function Messenger({ conversationId, compact = false }) {
   const [messages, setMessages] = useState([]);
@@ -29,6 +33,21 @@ export default function Messenger({ conversationId, compact = false }) {
   const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+
+  // Audio calling
+  const socket = getSocket();
+  const {
+    isCallActive,
+    isMuted,
+    callDuration,
+    incomingCall,
+    remoteStream,
+    initiateCall,
+    acceptCall,
+    rejectCall,
+    endCall,
+    toggleMute,
+  } = useWebRTC(currentUser?._id, socket);
 
   // Fetch current user
   useEffect(() => {
@@ -65,7 +84,7 @@ export default function Messenger({ conversationId, compact = false }) {
     };
   }, [currentUser?._id]);
 
-    // Fetch conversations on mount
+  // Fetch conversations on mount
   useEffect(() => {
     const fetchConversations = async () => {
       try {
@@ -199,7 +218,7 @@ export default function Messenger({ conversationId, compact = false }) {
         setNewMessage('');
         const data = await response.json();
         setMessages((prev) => [...prev, data.message]);
-        
+
         // Emit via Socket.io for real-time delivery
         emitSendMessage(selectedConversation, data.message);
       }
@@ -338,8 +357,8 @@ export default function Messenger({ conversationId, compact = false }) {
                   <div className="flex-shrink-0">
                     {msg.sender?.profilePic ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img 
-                        src={msg.sender.profilePic} 
+                      <img
+                        src={msg.sender.profilePic}
                         alt={msg.sender?.username}
                         className="w-6 h-6 rounded-full object-cover"
                       />
@@ -350,11 +369,10 @@ export default function Messenger({ conversationId, compact = false }) {
                     )}
                   </div>
                 )}
-                <div className={`max-w-xs rounded-2xl transition-all hover:scale-105 ${
-                  msg.sender?._id === currentUser?._id
+                <div className={`max-w-xs rounded-2xl transition-all hover:scale-105 ${msg.sender?._id === currentUser?._id
                     ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 rounded-tr-none'
                     : 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white shadow-md shadow-black/20 rounded-tl-none'
-                } px-3 py-2`}>
+                  } px-3 py-2`}>
                   {msg.attachment?.type === 'voice' ? (
                     <div className="space-y-1.5">
                       <audio controls className="max-w-xs h-7 rounded-lg">
@@ -372,8 +390,8 @@ export default function Messenger({ conversationId, compact = false }) {
                           <div className="mt-2 rounded-lg border border-white/20 overflow-hidden bg-black/20 max-w-xs">
                             <div className="p-2 border-b border-white/10 flex items-center gap-2">
                               {msg.sharedPost.user?.profilePic ? (
-                                <img 
-                                  src={msg.sharedPost.user.profilePic} 
+                                <img
+                                  src={msg.sharedPost.user.profilePic}
                                   alt={msg.sharedPost.user.username}
                                   className="w-6 h-6 rounded-full object-cover"
                                 />
@@ -387,38 +405,38 @@ export default function Messenger({ conversationId, compact = false }) {
                             {msg.sharedPost.caption && (
                               <p className="p-2 text-xs line-clamp-2 opacity-90">{msg.sharedPost.caption}</p>
                             )}
-                          {sharedMedia?.url && (
-                            showVideo ? (
-                              <video
-                                src={sharedMedia.url}
-                                className="w-full max-h-40 object-cover cursor-pointer"
-                                controls
-                                playsInline
-                                preload="metadata"
-                                onClick={() => window.open(`/p/${msg.sharedPost._id}`, '_blank')}
-                              />
-                            ) : (
-                              <img 
-                                src={sharedMedia.url} 
-                                alt="Shared post"
-                                className="w-full max-h-40 object-cover cursor-pointer hover:opacity-90 transition"
-                                onClick={() => window.open(`/p/${msg.sharedPost._id}`, '_blank')}
-                              />
-                            )
-                          )}
-                          {msg.sharedPost.poll && (
-                            <div className="p-2 border-t border-white/10 text-xs text-white/80">
-                              <p className="font-semibold">{msg.sharedPost.poll.question}</p>
-                              <div className="mt-1 space-y-1">
-                                {(msg.sharedPost.poll.options || []).map((opt, idx) => (
-                                  <div key={opt.text + idx} className="rounded-lg bg-white/10 px-2 py-1 flex items-center justify-between">
-                                    <span>{opt.text}</span>
-                                    <span>{typeof opt.percentage === 'number' ? `${opt.percentage}%` : ''}</span>
-                                  </div>
-                                ))}
+                            {sharedMedia?.url && (
+                              showVideo ? (
+                                <video
+                                  src={sharedMedia.url}
+                                  className="w-full max-h-40 object-cover cursor-pointer"
+                                  controls
+                                  playsInline
+                                  preload="metadata"
+                                  onClick={() => window.open(`/p/${msg.sharedPost._id}`, '_blank')}
+                                />
+                              ) : (
+                                <img
+                                  src={sharedMedia.url}
+                                  alt="Shared post"
+                                  className="w-full max-h-40 object-cover cursor-pointer hover:opacity-90 transition"
+                                  onClick={() => window.open(`/p/${msg.sharedPost._id}`, '_blank')}
+                                />
+                              )
+                            )}
+                            {msg.sharedPost.poll && (
+                              <div className="p-2 border-t border-white/10 text-xs text-white/80">
+                                <p className="font-semibold">{msg.sharedPost.poll.question}</p>
+                                <div className="mt-1 space-y-1">
+                                  {(msg.sharedPost.poll.options || []).map((opt, idx) => (
+                                    <div key={opt.text + idx} className="rounded-lg bg-white/10 px-2 py-1 flex items-center justify-between">
+                                      <span>{opt.text}</span>
+                                      <span>{typeof opt.percentage === 'number' ? `${opt.percentage}%` : ''}</span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
                             <div className="p-2 text-xs opacity-60 hover:opacity-100 transition cursor-pointer" onClick={() => window.open(`/p/${msg.sharedPost._id}`, '_blank')}>
                               View post →
                             </div>
@@ -457,11 +475,10 @@ export default function Messenger({ conversationId, compact = false }) {
               onMouseDown={startRecording}
               onMouseUp={stopRecording}
               disabled={false}
-              className={`p-3 rounded-full transition-all hover:scale-110 active:scale-95 ${
-                isRecording
+              className={`p-3 rounded-full transition-all hover:scale-110 active:scale-95 ${isRecording
                   ? 'bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-500/50 animate-pulse'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-white shadow-md shadow-black/20'
-              }`}
+                }`}
               title="Hold to record voice"
             >
               🎤
@@ -486,7 +503,7 @@ export default function Messenger({ conversationId, compact = false }) {
         {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-white/10">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Messages</h2>
-          
+
           {/* Search Bar */}
           <div className="relative">
             <input
@@ -518,8 +535,8 @@ export default function Messenger({ conversationId, compact = false }) {
                 >
                   {user.profilePic ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img 
-                      src={user.profilePic} 
+                    <img
+                      src={user.profilePic}
                       alt={user.username}
                       className="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-2 ring-blue-500/30"
                     />
@@ -552,18 +569,17 @@ export default function Messenger({ conversationId, compact = false }) {
                   setSelectedConversation(conv._id);
                   setShowSearchResults(false);
                 }}
-                className={`w-full p-4 mx-2 my-1 text-left rounded-2xl transition-all active:scale-95 border ${
-                  selectedConversation === conv._id 
-                    ? 'bg-blue-50 dark:bg-blue-500/20 border-blue-200 dark:border-blue-500/40' 
+                className={`w-full p-4 mx-2 my-1 text-left rounded-2xl transition-all active:scale-95 border ${selectedConversation === conv._id
+                    ? 'bg-blue-50 dark:bg-blue-500/20 border-blue-200 dark:border-blue-500/40'
                     : 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10'
-                }`}
+                  }`}
               >
                 <div className="flex items-start gap-3">
                   {conv.participants && conv.participants[0] ? (
                     conv.participants[0].profilePic ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img 
-                        src={conv.participants[0].profilePic} 
+                      <img
+                        src={conv.participants[0].profilePic}
                         alt={conv.participantNames?.[0]}
                         className="w-12 h-12 rounded-full object-cover flex-shrink-0 mt-1 ring-2 ring-blue-500/30"
                       />
@@ -607,6 +623,22 @@ export default function Messenger({ conversationId, compact = false }) {
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-white/50">Active now</p>
               </div>
+              {/* Audio Call Button */}
+              <button
+                onClick={() => {
+                  const conv = conversations.find(c => c._id === selectedConversation);
+                  const recipientId = conv?.participants?.[0]?._id;
+                  if (recipientId && currentUser?._id) {
+                    initiateCall(recipientId, selectedConversation);
+                  }
+                }}
+                className="p-3 rounded-full bg-green-500 hover:bg-green-600 text-white transition-all hover:scale-110 active:scale-95 shadow-lg shadow-green-500/50"
+                title="Start audio call"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+              </button>
             </div>
 
             {/* Messages */}
@@ -625,8 +657,8 @@ export default function Messenger({ conversationId, compact = false }) {
                       <div className="flex-shrink-0">
                         {msg.sender?.profilePic ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img 
-                            src={msg.sender.profilePic} 
+                          <img
+                            src={msg.sender.profilePic}
                             alt={msg.sender?.username}
                             className="w-8 h-8 rounded-full object-cover"
                           />
@@ -641,11 +673,10 @@ export default function Messenger({ conversationId, compact = false }) {
                       {msg.sender?._id !== currentUser?._id && (
                         <p className="text-xs text-gray-500 dark:text-white/60 mb-1.5 font-medium">{msg.sender?.username}</p>
                       )}
-                      <div className={`max-w-md rounded-2xl transition-all hover:scale-105 ${
-                        msg.sender?._id === currentUser?._id
+                      <div className={`max-w-md rounded-2xl transition-all hover:scale-105 ${msg.sender?._id === currentUser?._id
                           ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 rounded-tr-none'
                           : 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white shadow-md shadow-black/20 rounded-tl-none'
-                      } px-4 py-2.5`}>
+                        } px-4 py-2.5`}>
                         {msg.attachment?.type === 'voice' ? (
                           <div className="space-y-2">
                             <audio controls className="max-w-md h-8 rounded-lg">
@@ -663,8 +694,8 @@ export default function Messenger({ conversationId, compact = false }) {
                                 <div className="mt-2 rounded-lg border border-white/20 overflow-hidden bg-black/20">
                                   <div className="p-2 border-b border-white/10 flex items-center gap-2">
                                     {msg.sharedPost.user?.profilePic ? (
-                                      <img 
-                                        src={msg.sharedPost.user.profilePic} 
+                                      <img
+                                        src={msg.sharedPost.user.profilePic}
                                         alt={msg.sharedPost.user.username}
                                         className="w-6 h-6 rounded-full object-cover"
                                       />
@@ -689,8 +720,8 @@ export default function Messenger({ conversationId, compact = false }) {
                                         onClick={() => window.open(`/p/${msg.sharedPost._id}`, '_blank')}
                                       />
                                     ) : (
-                                      <img 
-                                        src={sharedMedia.url} 
+                                      <img
+                                        src={sharedMedia.url}
                                         alt="Shared post"
                                         className="w-full max-h-48 object-cover cursor-pointer hover:opacity-90 transition"
                                         onClick={() => window.open(`/p/${msg.sharedPost._id}`, '_blank')}
@@ -781,6 +812,26 @@ export default function Messenger({ conversationId, compact = false }) {
           </div>
         )}
       </div>
+
+      {/* Audio Call Modals */}
+      {incomingCall && (
+        <IncomingCallModal
+          callerName={conversations.find(c => c.participants?.some(p => p._id === incomingCall.from))?.participantNames?.[0] || 'Unknown'}
+          onAccept={acceptCall}
+          onReject={rejectCall}
+        />
+      )}
+
+      {isCallActive && (
+        <AudioCall
+          remoteStream={remoteStream}
+          isMuted={isMuted}
+          callDuration={callDuration}
+          onToggleMute={toggleMute}
+          onEndCall={endCall}
+          callerName={conversations.find(c => c._id === selectedConversation)?.participantNames?.[0] || 'Unknown'}
+        />
+      )}
     </div>
   );
 }

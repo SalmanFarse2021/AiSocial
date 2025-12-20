@@ -1,14 +1,5 @@
 services:
   - type: web
-    name: aisocial-client
-    env: node
-    rootDir: client
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
-    envVars:
-      - key: NODE_VERSION
-        value: 20.11.0
-  - type: web
     name: aisocial-server
     env: node
     rootDir: server
@@ -18,9 +9,9 @@ services:
       - key: NODE_VERSION
         value: 20.11.0
       - key: API_BASE_URL
-        value: https://aisocial-d3x1.onrender.com
+        sync: false
       - key: CLIENT_ORIGIN
-        value: https://aisocial-01.onrender.com
+        sync: false
       - key: GOOGLE_CALLBACK_URL
         value: https://aisocial-d3x1.onrender.com/api/auth/google/callback
       - key: GOOGLE_CLIENT_ID

@@ -140,6 +140,51 @@ async function start() {
         });
       });
 
+      // WebRTC Audio Call Signaling
+      socket.on('call:initiate', (data) => {
+        const { to, from, conversationId } = data;
+        console.log(`📞 Call initiated from ${from} to ${to}`);
+        io.to(`user:${to}`).emit('call:incoming', {
+          from,
+          conversationId,
+        });
+      });
+
+      socket.on('call:accept', (data) => {
+        const { to, from } = data;
+        console.log(`✅ Call accepted by ${from} to ${to}`);
+        io.to(`user:${to}`).emit('call:accepted', { from });
+      });
+
+      socket.on('call:reject', (data) => {
+        const { to, from } = data;
+        console.log(`❌ Call rejected by ${from}`);
+        io.to(`user:${to}`).emit('call:rejected', { from });
+      });
+
+      socket.on('call:end', (data) => {
+        const { to, from } = data;
+        console.log(`📴 Call ended by ${from}`);
+        io.to(`user:${to}`).emit('call:ended', { from });
+      });
+
+      socket.on('call:offer', (data) => {
+        const { to, offer, from } = data;
+        console.log(`📤 WebRTC offer sent from ${from} to ${to}`);
+        io.to(`user:${to}`).emit('call:offer', { offer, from });
+      });
+
+      socket.on('call:answer', (data) => {
+        const { to, answer, from } = data;
+        console.log(`📥 WebRTC answer sent from ${from} to ${to}`);
+        io.to(`user:${to}`).emit('call:answer', { answer, from });
+      });
+
+      socket.on('call:ice-candidate', (data) => {
+        const { to, candidate, from } = data;
+        io.to(`user:${to}`).emit('call:ice-candidate', { candidate, from });
+      });
+
       socket.on('disconnect', () => {
         console.log('❌ User disconnected:', socket.id);
       });
