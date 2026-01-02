@@ -52,32 +52,26 @@ export const useCallSocket = () => {
         };
 
         const onCallUnavailable = (data) => {
+            console.log('[Call] User is offline/unavailable');
+            alert('User is currently offline or unreachable. Please try again later.');
             dispatch({ type: 'END_CALL', payload: { error: 'User is unavailable' } });
         };
 
         const onCallTimeout = (data) => {
+            console.log('[Call] Timeout received');
             dispatch({ type: 'END_CALL', payload: { error: 'Call timed out' } });
         };
-
-
 
         const onCallCreated = (data) => {
             console.log('Call created with ID:', data.callId);
             dispatch({ type: 'START_OUTGOING_CALL', payload: { ...state, callId: data.callId } });
         };
 
-        socket.on('call:created', onCallCreated);
-
-        return () => {
-            // ... previous cleanup ...
-            socket.off('call:created', onCallCreated);
-        };
-
         const onCallError = (data) => {
             dispatch({ type: 'END_CALL', payload: { error: data.message || 'Call failed' } });
         };
 
-        // Attach listeners
+        // Attach all listeners
         socket.on('call:ringing', onIncomingCall);
         socket.on('call:accepted', onCallAccepted);
         socket.on('call:rejected', onCallRejected);
@@ -86,10 +80,11 @@ export const useCallSocket = () => {
         socket.on('call:busy', onCallBusy);
         socket.on('call:unavailable', onCallUnavailable);
         socket.on('call:timeout', onCallTimeout);
+        socket.on('call:created', onCallCreated);
         socket.on('call:error', onCallError);
 
         return () => {
-            // Remove listeners
+            // Remove all listeners
             socket.off('call:ringing', onIncomingCall);
             socket.off('call:accepted', onCallAccepted);
             socket.off('call:rejected', onCallRejected);
@@ -98,7 +93,8 @@ export const useCallSocket = () => {
             socket.off('call:busy', onCallBusy);
             socket.off('call:unavailable', onCallUnavailable);
             socket.off('call:timeout', onCallTimeout);
+            socket.off('call:created', onCallCreated);
             socket.off('call:error', onCallError);
         };
-    }, [dispatch]);
+    }, [dispatch, state]);
 };

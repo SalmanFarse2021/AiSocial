@@ -584,8 +584,10 @@ export default function Messenger({ conversationId, compact = false }) {
   const initiateCall = (toUserId, type, userDetails) => {
     if (!selectedConversation) return;
 
+    console.log('[Call] Initiating call to:', toUserId, 'Type:', type);
     const socket = getSocket();
     if (socket) {
+      console.log('[Call] Socket is connected, emitting call:invite');
       callDispatch({
         type: 'START_OUTGOING_CALL',
         payload: {
@@ -600,6 +602,9 @@ export default function Messenger({ conversationId, compact = false }) {
         callType: type,
         conversationId: selectedConversation
       });
+    } else {
+      console.error('[Call] Socket is not connected!');
+      alert('Connection error. Please refresh the page.');
     }
   };
 
