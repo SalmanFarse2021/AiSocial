@@ -8,15 +8,15 @@ const router = Router();
 
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    // Accept images only
-    if (file.mimetype.startsWith('image/')) {
+    // Accept images and audio
+    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed!'), false);
+      cb(new Error('Only image and audio files are allowed!'), false);
     }
   }
 });
@@ -25,7 +25,7 @@ const upload = multer({
 router.post('/', authRequired, upload.single('file'), async (req, res) => {
   try {
     console.log('📤 Direct upload request received');
-    
+
     if (!req.file) {
       console.error('❌ No file in request');
       return res.status(400).json({ error: 'No file uploaded' });
@@ -39,10 +39,10 @@ router.post('/', authRequired, upload.single('file'), async (req, res) => {
     });
 
     const { type } = req.body;
-    const folder = type === 'profile' ? 'aisocial/profiles' : 
-                   type === 'cover' ? 'aisocial/covers' : 
-                   type === 'post' ? 'aisocial/posts' : 
-                   'aisocial/uploads';
+    const folder = type === 'profile' ? 'aisocial/profiles' :
+      type === 'cover' ? 'aisocial/covers' :
+        type === 'post' ? 'aisocial/posts' :
+          'aisocial/uploads';
 
     console.log(`🗂️ Uploading to folder: ${folder}`);
 
@@ -75,7 +75,7 @@ router.post('/', authRequired, upload.single('file'), async (req, res) => {
 
     const result = await uploadPromise;
 
-    res.json({ 
+    res.json({
       url: result.secure_url,
       publicId: result.public_id,
       width: result.width,
@@ -84,7 +84,7 @@ router.post('/', authRequired, upload.single('file'), async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Upload endpoint error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: error.message || 'Upload failed',
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
@@ -105,21 +105,21 @@ router.post('/signature', (req, res) => {
     // Validate env vars with detailed logging
     if (!CLOUDINARY_API_SECRET) {
       console.error('❌ Missing: CLOUDINARY_API_SECRET');
-      return res.status(500).json({ 
+      return res.status(500).json({
         message: 'CLOUDINARY_API_SECRET not configured',
         error: 'Server configuration error'
       });
     }
     if (!CLOUDINARY_API_KEY) {
       console.error('❌ Missing: CLOUDINARY_API_KEY');
-      return res.status(500).json({ 
+      return res.status(500).json({
         message: 'CLOUDINARY_API_KEY not configured',
         error: 'Server configuration error'
       });
     }
     if (!CLOUDINARY_CLOUD_NAME) {
       console.error('❌ Missing: CLOUDINARY_CLOUD_NAME');
-      return res.status(500).json({ 
+      return res.status(500).json({
         message: 'CLOUDINARY_CLOUD_NAME not configured',
         error: 'Server configuration error'
       });
@@ -130,13 +130,13 @@ router.post('/signature', (req, res) => {
     // Create params to sign
     const paramsToSign = { timestamp, folder };
     console.log('🔐 Params to sign:', paramsToSign);
-    
+
     // Generate signature using cloudinary SDK
     const signature = cloudinary.utils.api_sign_request(paramsToSign, CLOUDINARY_API_SECRET);
-    
+
     if (!signature) {
       console.error('❌ Failed to generate Cloudinary signature');
-      return res.status(500).json({ 
+      return res.status(500).json({
         message: 'Failed to generate signature',
         error: 'Signature generation failed'
       });
@@ -162,8 +162,8 @@ router.post('/signature', (req, res) => {
     res.json(response);
   } catch (err) {
     console.error('❌ Signature endpoint error:', err);
-    res.status(500).json({ 
-      message: 'Error generating signature', 
+    res.status(500).json({
+      message: 'Error generating signature',
       error: err.message,
       details: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });

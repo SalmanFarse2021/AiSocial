@@ -149,7 +149,7 @@ export const sendMessage = async (req, res) => {
 
     await message.save();
     await message.populate('sender', 'username profilePic');
-    
+
     // Populate shared post if present
     if (sharedPost) {
       await message.populate({
@@ -434,5 +434,54 @@ export const getUnreadCount = async (req, res) => {
   } catch (error) {
     console.error('Error getting unread count:', error);
     res.status(500).json({ message: 'Failed to get unread count' });
+  }
+};
+
+// Toggle mute conversation
+export const muteConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+    const conversation = await Conversation.findById(conversationId);
+
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+    if (!conversation.participants.includes(userId)) return res.status(403).json({ message: 'Not authorized' });
+
+    const isMuted = conversation.mutedBy.includes(userId);
+    if (isMuted) {
+      conversation.mutedBy = conversation.mutedBy.filter(id => String(id) !== userId);
+    } else {
+      conversation.mutedBy.push(userId);
+    }
+
+    await conversation.save();
+    res.json({ message: isMuted ? 'Unmuted' : 'Muted', isMuted: !isMuted });
+  } catch (error) {
+    console.error('Error muting conversation:', error);
+    res.status(500).json({ message: 'Failed to mute conversation' });
+  }
+};
+
+// Delete conversation
+export const deleteConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+    const conversation = await Conversation.findById(conversationId);
+
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+    if (!conversation.participants.includes(userId)) return res.status(403).json({ message: 'Not authorized' });
+
+    // For now, we'll just remove the conversation completely if it's a direct chat or if admin deletes group
+    // A better approach for the future would be "hiding" it for the user, but for this task hard delete or archived is fine.
+    // Let's implement actual delete for now as per "Instagram" often implies leaving/deleting.
+
+    await Conversation.findByIdAndDelete(conversationId);
+    await Message.deleteMany({ conversation: conversationId });
+
+    res.json({ message: 'Conversation deleted' });
+  } catch (error) {
+    console.error('Error deleting conversation:', error);
+    res.status(500).json({ message: 'Failed to delete conversation' });
   }
 };

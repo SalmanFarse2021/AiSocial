@@ -14,6 +14,8 @@ import {
   addGroupParticipant,
   removeGroupParticipant,
   getUnreadCount,
+  muteConversation,
+  deleteConversation,
 } from '../controllers/message.controller.js';
 
 const router = Router();
@@ -24,6 +26,8 @@ router.get('/conversations', authRequired, getConversations);
 router.get('/unread-count', authRequired, getUnreadCount);
 router.post('/conversations/group', authRequired, createGroupChat);
 router.patch('/conversations/:conversationId', authRequired, updateGroupChat);
+router.patch('/conversations/:conversationId/mute', authRequired, muteConversation);
+router.delete('/conversations/:conversationId', authRequired, deleteConversation);
 
 // Message routes
 router.get('/conversations/:conversationId/messages', authRequired, getMessages);

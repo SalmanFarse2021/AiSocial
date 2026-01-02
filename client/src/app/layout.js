@@ -7,6 +7,7 @@ export const metadata = {
 };
 
 import { CallProvider } from '@/contexts/CallContext';
+import CallOverlay from '@/components/Call/CallOverlay';
 
 export default function RootLayout({ children }) {
   const themeScript = `
@@ -35,6 +36,7 @@ export default function RootLayout({ children }) {
         <ThemeProvider>
           <CallProvider>
             {children}
+            <CallOverlay />
           </CallProvider>
         </ThemeProvider>
       </body>

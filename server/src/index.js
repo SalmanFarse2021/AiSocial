@@ -21,6 +21,8 @@ import aiRoutes from './routes/aiRoutes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import hashtagRoutes from './routes/hashtag.routes.js';
 import statsRoutes from './routes/stats.routes.js';
+import { registerCallHandlers } from './socket/callHandlers.js';
+import { socketAuth } from './middleware/socketAuth.js';
 
 // Default port matches client fallback (5050) and avoids macOS Control Center using 5000
 const DEFAULT_PORT = 5050;
@@ -34,6 +36,10 @@ const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: CLIENT_ORIGIN, credentials: true },
 });
+
+io.use(socketAuth);
+
+
 
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
@@ -58,6 +64,31 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/hashtags', hashtagRoutes);
 app.use('/api/stats', statsRoutes);
 
+// Debug route for sockets
+app.get('/api/debug/sockets', (req, res) => {
+  // This is dirty but effective for debugging since we can't export the map easily from inside start()
+  // Wait, we can't access userSockets here because it's scoped to start().
+  // We attached it to global in Step 926!
+  // But Step 926 showed: global.io = io; global.emitToUser = emitToUser; 
+  // It did NOT attach userSockets.
+  // However, we can use the result of io.sockets.sockets to see all connected sockets.
+
+  // Better: let's expose userSockets to global temporarily in start() function.
+
+  // For now, let's just inspect io.sockets
+  const connected = [];
+  if (global.io) {
+    global.io.sockets.sockets.forEach((s) => {
+      connected.push({
+        id: s.id,
+        userId: s.userId,
+        connected: s.connected
+      });
+    });
+  }
+  res.json({ count: connected.length, sockets: connected });
+});
+
 async function start() {
   try {
     await connectDB();
@@ -66,39 +97,73 @@ async function start() {
     await sanitizeUsersGeo();
 
     // Socket.io setup
-    io.on('connection', (socket) => {
-      console.log('✅ New user connected:', socket.id);
 
-      // Store user ID with socket
-      socket.on('user-connected', (userId) => {
-        socket.userId = userId;
-        socket.join(`user:${userId}`);
-        console.log(`User ${userId} joined room user:${userId}`);
-      });
+    // Global User Registry: Map<userId, Set<socketId>>
+    // This handles multi-device support
+    const userSockets = new Map();
+
+    // Helper: Emit to specific user (all their devices)
+    const emitToUser = (userId, event, payload) => {
+      const sockets = userSockets.get(String(userId));
+      if (sockets) {
+        sockets.forEach(socketId => {
+          io.to(socketId).emit(event, payload);
+        });
+        return true;
+      }
+      return false;
+    };
+
+    // Helper: Check if user is online
+    const isOnline = (userId) => {
+      return userSockets.has(String(userId)) && userSockets.get(String(userId)).size > 0;
+    };
+
+    io.on('connection', (socket) => {
+      console.log(`✅ User connected: ${socket.userId} (${socket.id})`);
+
+      // Add to registry
+      const userId = socket.userId;
+      if (!userSockets.has(userId)) {
+        userSockets.set(userId, new Set());
+      }
+      userSockets.get(userId).add(socket.id);
+
+      // Join user-specific room (user:userId) for easy targeting if needed, 
+      // but registry is often more robust for multi-device tracking logic.
+      socket.join(`user:${userId}`);
+
+      // Broadcast online status only if this is their first connection
+      if (userSockets.get(userId).size === 1) {
+        socket.broadcast.emit('user-online', userId);
+      }
+
+      console.log(`User ${userId} active on ${userSockets.get(userId).size} device(s)`);
+
+      // Initialize Call Handlers
+      registerCallHandlers(io, socket, { emitToUser, isOnline });
+
 
       // Handle sending messages
       socket.on('send-message', (data) => {
         const { conversationId, message } = data;
-        console.log(`📨 Message sent in conversation ${conversationId}:`, message);
         io.to(`conversation:${conversationId}`).emit('message-received', message);
       });
 
       // Join conversation room
       socket.on('join-conversation', (conversationId) => {
         socket.join(`conversation:${conversationId}`);
-        console.log(`✅ Socket ${socket.id} joined conversation:${conversationId}`);
       });
 
       // Leave conversation room
       socket.on('leave-conversation', (conversationId) => {
         socket.leave(`conversation:${conversationId}`);
-        console.log(`❌ Socket ${socket.id} left conversation:${conversationId}`);
       });
 
       // Handle typing
       socket.on('typing', (data) => {
         const { conversationId, isTyping } = data;
-        io.to(`conversation:${conversationId}`).emit('user-typing', {
+        socket.to(`conversation:${conversationId}`).emit('user-typing', {
           userId: socket.userId,
           isTyping,
         });
@@ -135,9 +200,8 @@ async function start() {
       // Handle message read
       socket.on('mark-read', (data) => {
         const { conversationId, userId: senderId } = data;
-        io.to(`user:${senderId}`).emit('message-read', {
-          conversationId,
-        });
+        // Emit to the sender that their message was read
+        emitToUser(senderId, 'message-read', { conversationId });
       });
 
       // WebRTC Audio Call Signaling
@@ -186,13 +250,30 @@ async function start() {
       });
 
       socket.on('disconnect', () => {
-        console.log('❌ User disconnected:', socket.id);
+        console.log(`❌ User disconnected: ${userId} (${socket.id})`);
+
+        // Remove from registry
+        if (userSockets.has(userId)) {
+          const userdevs = userSockets.get(userId);
+          userdevs.delete(socket.id);
+
+          if (userdevs.size === 0) {
+            userSockets.delete(userId);
+            socket.broadcast.emit('user-offline', userId);
+          }
+        }
       });
 
       socket.on('error', (error) => {
         console.error('Socket error:', error);
       });
     });
+
+    // Make io events accessible globally via app or export if needed later
+    // For now we'll keep logic here or move to modular handlers in Step 3
+    global.io = io;
+    global.emitToUser = emitToUser;
+    global.isOnline = isOnline;
 
     httpServer.listen(PORT, () => {
       console.log(`API listening on http://localhost:${PORT}`);
