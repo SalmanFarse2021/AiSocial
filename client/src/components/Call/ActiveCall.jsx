@@ -44,14 +44,9 @@ const ActiveCall = () => {
     return (
         <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center animate-in fade-in duration-300">
             {/* Remote Video (Full Screen) */}
-            <div className="absolute inset-0 w-full h-full bg-zinc-900 flex items-center justify-center">
+            <div className="absolute inset-0 w-full h-full bg-zinc-900">
                 {remoteStream ? (
-                    <video
-                        ref={remoteVideoRef}
-                        autoPlay
-                        playsInline
-                        className="max-w-full max-h-full object-contain"
-                    />
+                    <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center flex-col gap-4">
                         <div className="w-24 h-24 rounded-full bg-zinc-800 animate-pulse" />
@@ -62,14 +57,8 @@ const ActiveCall = () => {
 
             {/* Local Video (PiP) */}
             {callType === 'video' && (
-                <div className="absolute top-4 right-4 w-32 h-48 bg-black rounded-xl overflow-hidden shadow-2xl border border-zinc-700 flex items-center justify-center">
-                    <video
-                        ref={localVideoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="max-w-full max-h-full object-contain mirror-mode"
-                    />
+                <div className="absolute top-4 right-4 w-32 h-48 bg-black rounded-xl overflow-hidden shadow-2xl border border-zinc-700">
+                    <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover mirror-mode" />
                     {!isVideoEnabled && (
                         <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
                             <p className="text-xs text-white">Camera Off</p>
